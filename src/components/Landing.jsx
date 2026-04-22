@@ -235,7 +235,24 @@ export default function Landing({ onSessionCreated }) {
 
           {/* 6-digit code */}
           <div style={s.field}>
-            <label style={s.label}>6-digit code</label>
+            <div style={s.labelRow}>
+              <label style={s.label}>6-digit code</label>
+              {tab === 'create' && (
+                <button
+                  type="button"
+                  style={s.refreshBtn}
+                  onClick={refreshCode}
+                  title="Generate a new code"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <path d="M23 4v6h-6M1 20v-6h6"/>
+                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                  </svg>
+                  Regenerate
+                </button>
+              )}
+            </div>
             <div style={s.digitRow}>
               {digits.map((d, i) => (
                 <input
@@ -256,35 +273,20 @@ export default function Landing({ onSessionCreated }) {
                   onPaste={i === 0 ? handlePaste : undefined}
                 />
               ))}
-              {tab === 'create' && (
-                <button
-                  type="button"
-                  style={s.refreshBtn}
-                  onClick={refreshCode}
-                  title="Generate a new code"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                    <path d="M23 4v6h-6M1 20v-6h6"/>
-                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                  </svg>
-                </button>
-              )}
             </div>
           </div>
 
-          {/* Project name (create only) */}
-          {tab === 'create' && (
-            <div style={s.field}>
-              <label style={s.label}>Project name</label>
-              <input
-                style={s.textInput}
-                placeholder="e.g. Tokyo Trip 2026"
-                value={projectName}
-                onChange={e => { setProjectName(e.target.value); setError(''); }}
-              />
-            </div>
-          )}
+          {/* Project name — always rendered to keep layout stable; hidden on Join tab */}
+          <div style={{ ...s.field, visibility: tab === 'create' ? 'visible' : 'hidden' }}>
+            <label style={s.label}>Project name</label>
+            <input
+              style={s.textInput}
+              placeholder="e.g. Tokyo Trip 2026"
+              value={projectName}
+              tabIndex={tab === 'create' ? 0 : -1}
+              onChange={e => { setProjectName(e.target.value); setError(''); }}
+            />
+          </div>
 
           {/* Your name */}
           <div style={s.field}>
@@ -371,12 +373,14 @@ const s = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '32px 24px',
+    padding: 'calc(32px + env(safe-area-inset-top)) 0 calc(32px + env(safe-area-inset-bottom))',
     fontFamily: font.sans,
   },
   inner: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 480,
+    padding: '0 20px',
+    boxSizing: 'border-box',
   },
   logoRow: {
     display: 'flex',
@@ -405,14 +409,19 @@ const s = {
     marginBottom: 28,
   },
   tab: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
     padding: '9px 0',
     borderRadius: radius.pill,
+    border: 'none',
     background: 'transparent',
     color: colors.textSecondary,
     fontSize: 14,
     fontWeight: 500,
     fontFamily: font.sans,
+    textAlign: 'center',
+    cursor: 'pointer',
     transition: 'all 0.18s',
   },
   tabActive: {
@@ -428,6 +437,11 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
+  },
+  labelRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   label: {
     fontSize: 11,
@@ -461,18 +475,18 @@ const s = {
     background: colors.settlementBg,
   },
   refreshBtn: {
-    marginLeft: 4,
-    width: 40,
-    height: 40,
-    borderRadius: radius.input,
-    border: `1.5px solid ${colors.border}`,
-    background: colors.cardPrimary,
-    color: colors.textSecondary,
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    transition: 'color 0.15s',
+    gap: 4,
+    background: 'none',
+    border: 'none',
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: 600,
+    fontFamily: font.sans,
+    cursor: 'pointer',
+    padding: 0,
+    letterSpacing: '0.3px',
   },
   textInput: {
     padding: '13px 15px',

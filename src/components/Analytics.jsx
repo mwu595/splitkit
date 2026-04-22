@@ -186,12 +186,13 @@ const s = {
   stickyTop: {
     flexShrink: 0,
     background: colors.bg,
+    paddingTop: 'env(safe-area-inset-top)',
   },
   scrollBody: {
     flex: 1,
     overflowY: 'auto',
     WebkitOverflowScrolling: 'touch',
-    paddingBottom: 40,
+    paddingBottom: 'calc(40px + env(safe-area-inset-bottom))',
   },
   header: {
     padding: '20px 20px 0',
