@@ -1,0 +1,111 @@
+/* ── Reset ────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: #0F0E0E;
+  color: #F5F4F2;
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  background: #0F0E0E;
+}
+
+/* ── App container ─────────────────────────────────────────── */
+.app-container {
+  width: 100%;
+  max-width: 480px;
+  min-height: 100%;
+  position: relative;
+  background: #0F0E0E;
+}
+
+/* ── Screen transition animations ─────────────────────────── */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeSlideOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-8px); }
+}
+
+.screen-enter { animation: fadeSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.screen-exit  { animation: fadeSlideOut 0.14s ease-in forwards; pointer-events: none; }
+
+/* ── Popover animation ────────────────────────────────────── */
+@keyframes popoverIn {
+  from { opacity: 0; transform: scale(0.92) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+/* ── Bottom sheet animations ──────────────────────────────── */
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes sheetDown {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+
+.sheet-enter { animation: sheetUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.sheet-exit  { animation: sheetDown 0.2s ease-in forwards; }
+
+/* ── Utilities ─────────────────────────────────────────────── */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Input / button resets ────────────────────────────────── */
+input, textarea, select, button {
+  font-family: inherit;
+  outline: none;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: opacity 0.15s, transform 0.1s;
+}
+button:hover  { opacity: 0.85; }
+button:active { opacity: 0.7; transform: scale(0.97); }
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+input[type="number"] { -moz-appearance: textfield; }
+
+/* ── Focus ring (keyboard nav) ───────────────────────────── */
+:focus-visible {
+  outline: 2px solid #E8302A;
+  outline-offset: 2px;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2A2826; border-radius: 99px; }
+
+/* ── Safe-area helpers ────────────────────────────────────── */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top:    env(safe-area-inset-top); }
+
+/* ── Date input dark-mode fix ─────────────────────────────── */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+}
+input[type="date"] { color-scheme: dark; }

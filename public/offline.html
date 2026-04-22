@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0F0E0E" />
+  <title>Split Kit — Offline</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0F0E0E;
+      color: #F5F4F2;
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+      padding: 24px;
+      gap: 12px;
+    }
+    .icon { font-size: 56px; }
+    h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    p  { font-size: 14px; color: #6E6A66; line-height: 1.5; }
+    button {
+      margin-top: 12px;
+      padding: 14px 32px;
+      border-radius: 99px;
+      background: #E8302A;
+      color: #fff;
+      border: none;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <div class="icon">📡</div>
+  <h1>You're offline</h1>
+  <p>Check your connection and try again.</p>
+  <button onclick="location.reload()">Retry</button>
+</body>
+</html>
