@@ -45,6 +45,7 @@ export default function Profile({ session, members, currentMember, project, onLe
 
   // Avatar
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError,     setAvatarError]     = useState('');
 
   // Project name (admin only)
   const [editingProject,     setEditingProject]     = useState(false);
@@ -105,12 +106,14 @@ export default function Profile({ session, members, currentMember, project, onLe
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingAvatar(true);
+    setAvatarError('');
     try {
       const data = await compressImage(file);
       await updateMemberAvatar(session.memberId, data);
       refresh();
-    } catch {
-      // silently ignore
+    } catch (err) {
+      console.error('[splitkit] avatar upload failed:', err);
+      setAvatarError('Could not upload photo. Try again.');
     } finally {
       setUploadingAvatar(false);
       e.target.value = '';
@@ -243,6 +246,11 @@ export default function Profile({ session, members, currentMember, project, onLe
             style={{ display: 'none' }}
             onChange={handleAvatarChange}
           />
+          {avatarError && (
+            <p style={{ fontSize: 10, color: colors.accent, marginTop: 4, textAlign: 'center', maxWidth: 72 }}>
+              {avatarError}
+            </p>
+          )}
         </div>
 
         {/* Name + badges */}

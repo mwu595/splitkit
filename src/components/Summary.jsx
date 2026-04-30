@@ -49,13 +49,7 @@ function MemberBalanceRow({ member, isSelf }) {
 
   return (
     <div style={s.memberRow}>
-      <div style={{
-        ...s.avatar,
-        background: isSelf ? colors.accent : colors.cardSecondary,
-        color: isSelf ? '#fff' : colors.textSecondary,
-      }}>
-        {member.name[0].toUpperCase()}
-      </div>
+      <Avatar member={member} size={36} isActive={isSelf} />
       <div style={s.memberInfo}>
         <span style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary }}>
           {member.name}
@@ -69,13 +63,11 @@ function MemberBalanceRow({ member, isSelf }) {
   );
 }
 
-function TransferCard({ transfer, isMine, onSettle }) {
+function TransferCard({ transfer, isMine, onSettle, fromMember, toMember }) {
   return (
     <div style={{ ...s.transferCard, ...(isMine ? s.transferCardMine : {}) }}>
       <div style={s.transferAvatars}>
-        <div style={{ ...s.avatar, background: isMine ? colors.accent : colors.cardSecondary, color: isMine ? '#fff' : colors.textSecondary }}>
-          {transfer.fromName[0].toUpperCase()}
-        </div>
+        <Avatar member={fromMember} size={36} isActive={isMine} />
         <div style={s.transferArrow}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
             stroke={colors.textMuted} strokeWidth="2" strokeLinecap="round">
@@ -83,9 +75,7 @@ function TransferCard({ transfer, isMine, onSettle }) {
             <polyline points="12 5 19 12 12 19" />
           </svg>
         </div>
-        <div style={{ ...s.avatar, background: colors.cardSecondary, color: colors.textSecondary }}>
-          {transfer.toName[0].toUpperCase()}
-        </div>
+        <Avatar member={toMember} size={36} />
       </div>
       <div style={s.transferInfo}>
         <span style={{ fontSize: 13, color: colors.textSecondary }}>
@@ -118,6 +108,7 @@ export default function Summary({ session, members, transactions, activeTab, onT
 
   const memberId  = session?.memberId;
   const memberMap = Object.fromEntries(members.map(m => [m.id, m.name]));
+  const memberById = Object.fromEntries(members.map(m => [m.id, m]));
 
   const balances  = computeBalances(members, transactions);
   const myBalance = balances.find(b => b.id === memberId)?.balance ?? 0;
@@ -214,6 +205,8 @@ export default function Summary({ session, members, transactions, activeTab, onT
                   transfer={t}
                   isMine={t.from === memberId}
                   onSettle={handleSettleClick}
+                  fromMember={memberById[t.from]}
+                  toMember={memberById[t.to]}
                 />
               ))}
             </div>
@@ -253,9 +246,7 @@ export default function Summary({ session, members, transactions, activeTab, onT
                 openConfirm(t);
               }}
             >
-              <div style={{ ...s.avatar, background: colors.cardSecondary, color: colors.textSecondary }}>
-                {t.toName[0].toUpperCase()}
-              </div>
+              <Avatar member={memberById[t.to]} size={36} />
               <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 600, color: colors.textPrimary }}>
                 {t.toName}
               </span>
@@ -278,9 +269,7 @@ export default function Summary({ session, members, transactions, activeTab, onT
             <div style={s.confirmCard}>
               <div style={s.confirmAvatarRow}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <div style={{ ...s.avatarLg, background: colors.accent, color: '#fff' }}>
-                    {selected.fromName[0].toUpperCase()}
-                  </div>
+                  <Avatar member={memberById[selected.from]} size={52} isActive />
                   <span style={{ fontSize: 12, color: colors.textSecondary }}>{selected.fromName}</span>
                 </div>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -289,9 +278,7 @@ export default function Summary({ session, members, transactions, activeTab, onT
                   <polyline points="12 5 19 12 12 19" />
                 </svg>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <div style={{ ...s.avatarLg, background: colors.cardSecondary, color: colors.textSecondary }}>
-                    {selected.toName[0].toUpperCase()}
-                  </div>
+                  <Avatar member={memberById[selected.to]} size={52} />
                   <span style={{ fontSize: 12, color: colors.textSecondary }}>{selected.toName}</span>
                 </div>
               </div>

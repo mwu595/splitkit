@@ -22,18 +22,19 @@ const DIGIT_COUNT = 6;
 
 function LogoMark() {
   return (
-    <svg width="36" height="36" viewBox="0 0 28 28" fill="none">
-      <rect x="2"  y="2"  width="11" height="11" rx="3" fill={colors.accent} />
-      <rect x="15" y="2"  width="11" height="11" rx="3" fill="#6B1A1A" />
-      <rect x="2"  y="15" width="11" height="11" rx="3" fill="#6B1A1A" />
-      <rect x="15" y="15" width="11" height="11" rx="3" fill={colors.accent} />
-    </svg>
+    <img
+      src="/icons/logo.png"
+      alt="Split Kit"
+      width={36}
+      height={36}
+      style={{ borderRadius: 8, display: 'block' }}
+    />
   );
 }
 
 function MemberRow({ member, onClaim, isMine, isUnclaimed }) {
   const label = isMine ? "That's me →" : isUnclaimed ? 'Join as this name →' : 'Claim →';
-  const labelColor = isMine || isUnclaimed ? colors.accent : colors.textMuted;
+  const labelColor = colors.accent;
   return (
     <button
       type="button"
@@ -61,6 +62,7 @@ export default function Landing({ onSessionCreated, authUser }) {
   const displayName = authUser?.user_metadata?.display_name ?? '';
 
   const [showAuth,      setShowAuth]      = useState(false);
+  const [showClaimTip,  setShowClaimTip]  = useState(false);
   const [tab,           setTab]           = useState('join'); // 'join' | 'create' | 'existing'
   const [digits,        setDigits]        = useState(Array(DIGIT_COUNT).fill(''));
   const [projectName,   setProjectName]   = useState('');
@@ -266,7 +268,7 @@ export default function Landing({ onSessionCreated, authUser }) {
           >
             {authUser ? (
               <div style={s.authAvatarSigned}>
-                {(authUser.email?.[0] ?? '?').toUpperCase()}
+                {(displayName?.[0] || authUser.email?.[0] || '?').toUpperCase()}
               </div>
             ) : (
               <div style={s.authAvatarAnon}>
@@ -450,7 +452,30 @@ export default function Landing({ onSessionCreated, authUser }) {
 
               {members.filter(m => !m.removedAt).length > 0 && (
                 <div style={s.claimSection}>
-                  <p style={s.claimLabel}>Already in this project?</p>
+                  <div style={s.claimLabelRow}>
+                    <p style={s.claimLabel}>Already in this project?</p>
+                    <button
+                      type="button"
+                      style={s.infoBtn}
+                      onClick={() => setShowClaimTip(v => !v)}
+                      aria-label="What do these options mean?"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke={showClaimTip ? colors.textPrimary : colors.textMuted}
+                        strokeWidth="2" strokeLinecap="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                      </svg>
+                    </button>
+                  </div>
+                  {showClaimTip && (
+                    <div style={s.claimTooltip}>
+                      <p style={s.claimTooltipLine}><span style={s.claimTooltipBold}>That's me →</span> You've been here before on this device.</p>
+                      <p style={s.claimTooltipLine}><span style={s.claimTooltipBold}>Join as this name →</span> This spot was created for you but hasn't been claimed yet.</p>
+                      <p style={s.claimTooltipLine}><span style={s.claimTooltipBold}>Claim →</span> This is you, but you're on a new device.</p>
+                    </div>
+                  )}
                   {members
                     .filter(m => !m.removedAt)
                     .map(m => {
@@ -732,13 +757,45 @@ const s = {
     flexDirection: 'column',
     gap: 8,
   },
+  claimLabelRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
   claimLabel: {
     fontSize: 11,
     fontWeight: 700,
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: '0.7px',
-    marginBottom: 2,
+  },
+  infoBtn: {
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    lineHeight: 1,
+  },
+  claimTooltip: {
+    background: colors.cardSecondary,
+    border: `1px solid ${colors.border}`,
+    borderRadius: radius.input,
+    padding: '12px 14px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 7,
+  },
+  claimTooltipLine: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 1.5,
+    margin: 0,
+  },
+  claimTooltipBold: {
+    color: colors.textPrimary,
+    fontWeight: 600,
   },
   memberRow: {
     display: 'flex',

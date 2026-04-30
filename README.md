@@ -2,7 +2,7 @@
 
 **Expense splitting for groups. No account required.**
 
-Create a trip. Share a 6-digit code. Everyone's in. No sign-up, no passwords, no "wait I didn't get the invite email." Just split the bill and move on with your life. Sign in with a magic link if you want your projects saved across devices — entirely optional.
+Share a 6-digit code. Everyone's in. No sign-up, no passwords. Just split the bill and move on with your life. 
 
 ---
 
@@ -24,9 +24,10 @@ A project lives as long as you need it — a weekend trip, a group dinner, a two
 - **6-digit join code** — share it in a group chat; everyone joins on their own device, no account needed
 - **Multi-currency** — log expenses in 150+ currencies; balances auto-convert to USD so nobody argues about exchange rates at dinner
 - **Smart settlement** — figures out the fewest possible payments to settle all debts. Math is hard; this handles it.
-- **Real-time sync** — log a expense and your whole group sees it immediately
+- **Real-time sync** — log an expense and your whole group sees it immediately
 - **Travel-tuned categories** — Flights, Accommodation, Activities, Car Rental, Visa & Fees, and more — ordered by how often you'll actually use them
 - **Spend trend** — mini chart showing daily spend over the trip, so you can see exactly when things got out of hand
+- **Member avatars** — upload a photo from your profile; it shows up in expense pills, the summary, settlements, and analytics filters
 - **Optional accounts** — sign in with a magic link to save your projects to an account and access them from any device; the app works fine without it
 - **Installable** — add to your home screen; works like a native app
 

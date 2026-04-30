@@ -77,20 +77,31 @@ export default function Analytics({ session, members, transactions, activeTab, o
 
         <div className="hide-scrollbar" style={s.filterScroll}>
           <button
-            style={{ ...s.filterPill, ...(filterMember === 'all' ? s.filterPillActive : {}) }}
+            style={{ ...s.filterPill, padding: '7px 16px', ...(filterMember === 'all' ? s.filterPillActive : {}) }}
             onClick={() => setFilterMember('all')}
           >
             All
           </button>
-          {members.map(m => (
-            <button
-              key={m.id}
-              style={{ ...s.filterPill, ...(filterMember === m.id ? s.filterPillActive : {}) }}
-              onClick={() => setFilterMember(m.id)}
-            >
-              {m.name}{m.id === memberId ? ' (you)' : ''}
-            </button>
-          ))}
+          {members.map(m => {
+            const active = filterMember === m.id;
+            return (
+              <button
+                key={m.id}
+                style={{ ...s.filterPill, ...(active ? s.filterPillActive : {}) }}
+                onClick={() => setFilterMember(m.id)}
+              >
+                {m.avatarData
+                  ? <img src={m.avatarData} alt={m.name} style={s.filterPillAvatarImg} />
+                  : <div style={{
+                      ...s.filterPillAvatar,
+                      background: active ? 'rgba(255,255,255,0.25)' : colors.cardSecondary,
+                      color: active ? '#fff' : colors.textSecondary,
+                    }}>{m.name[0].toUpperCase()}</div>
+                }
+                {m.name}{m.id === memberId ? ' (you)' : ''}
+              </button>
+            );
+          })}
         </div>
 
         <div style={s.totalRow}>
@@ -227,7 +238,10 @@ const s = {
     padding: '16px 20px',
   },
   filterPill: {
-    padding: '7px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 14px 6px 8px',
     borderRadius: radius.pill,
     border: `1.5px solid ${colors.border}`,
     background: colors.cardPrimary,
@@ -239,6 +253,25 @@ const s = {
     fontFamily: font.sans,
     flexShrink: 0,
     transition: 'all 0.12s',
+  },
+  filterPillAvatar: {
+    width: 18,
+    height: 18,
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 9,
+    fontWeight: 700,
+    flexShrink: 0,
+  },
+  filterPillAvatarImg: {
+    width: 18,
+    height: 18,
+    borderRadius: '50%',
+    objectFit: 'cover',
+    flexShrink: 0,
+    display: 'block',
   },
   filterPillActive: {
     background: colors.accent,

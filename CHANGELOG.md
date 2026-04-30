@@ -4,6 +4,7 @@ Follows [Semantic Versioning](https://semver.org). Most recent first.
 
 ---
 
+- **v1.1.1** — 2026-04-30 — avatars actually work now, new logo, misc fixes
 - **v1.1.0** — 2026-04-29 — optional accounts (magic link email), cross-device project history, smarter join flow
 - **v1.0.1** — 2026-04-21 — fixed some paddings so it doesn't look weird on your phone
 - **v1.0.0** — 2026-04-21 — wrote the docs, made it official

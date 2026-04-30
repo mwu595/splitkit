@@ -245,13 +245,14 @@ export default function EditTransaction({ open, onClose, onDeleted, session, mem
                         style={{ ...s.pill, ...(active ? s.pillActive : {}) }}
                         onClick={() => set('paidBy', m.id)}
                       >
-                        <div style={{
-                          ...s.pillAvatar,
-                          background: active ? 'rgba(255,255,255,0.25)' : colors.cardPrimary,
-                          color: active ? '#fff' : colors.textSecondary,
-                        }}>
-                          {m.name[0].toUpperCase()}
-                        </div>
+                        {m.avatarData
+                          ? <img src={m.avatarData} alt={m.name} style={s.pillAvatarImg} />
+                          : <div style={{
+                              ...s.pillAvatar,
+                              background: active ? 'rgba(255,255,255,0.25)' : colors.cardPrimary,
+                              color: active ? '#fff' : colors.textSecondary,
+                            }}>{m.name[0].toUpperCase()}</div>
+                        }
                         {m.name}
                       </button>
                     );
@@ -278,13 +279,14 @@ export default function EditTransaction({ open, onClose, onDeleted, session, mem
                         style={{ ...s.pill, ...(active ? s.pillActive : {}) }}
                         onClick={() => toggleSplit(m.id)}
                       >
-                        <div style={{
-                          ...s.pillAvatar,
-                          background: active ? 'rgba(255,255,255,0.25)' : colors.cardPrimary,
-                          color: active ? '#fff' : colors.textSecondary,
-                        }}>
-                          {m.name[0].toUpperCase()}
-                        </div>
+                        {m.avatarData
+                          ? <img src={m.avatarData} alt={m.name} style={s.pillAvatarImg} />
+                          : <div style={{
+                              ...s.pillAvatar,
+                              background: active ? 'rgba(255,255,255,0.25)' : colors.cardPrimary,
+                              color: active ? '#fff' : colors.textSecondary,
+                            }}>{m.name[0].toUpperCase()}</div>
+                        }
                         {m.name}
                       </button>
                     );
@@ -615,6 +617,14 @@ const s = {
     fontSize: 11,
     fontWeight: 700,
     flexShrink: 0,
+  },
+  pillAvatarImg: {
+    width: 22,
+    height: 22,
+    borderRadius: '50%',
+    objectFit: 'cover',
+    flexShrink: 0,
+    display: 'block',
   },
 
   // ── Currency search ───────────────────────────────────────────
