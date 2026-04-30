@@ -8,14 +8,15 @@ export default function AuthSheet({ open, onClose, authUser }) {
   const [nameInput,    setNameInput]    = useState('');
   const [editingName,  setEditingName]  = useState(false);
   const [editNameInput, setEditNameInput] = useState('');
-  const [status,       setStatus]       = useState('idle'); // 'idle'|'sending'|'sent'|'saving'|'signingout'
+  const [status,       setStatus]       = useState('idle'); // 'idle'|'sending'|'sent'|'verifying'|'saving'|'signingout'
   const [error,        setError]        = useState('');
+  const [code,         setCode]         = useState('');
 
   const displayName = authUser?.user_metadata?.display_name ?? '';
 
   // Reset sign-in form when sheet opens without auth; reset name edit on close
   useEffect(() => {
-    if (open && !authUser) { setStatus('idle'); setError(''); setEmail(''); }
+    if (open && !authUser) { setStatus('idle'); setError(''); setEmail(''); setCode(''); }
     if (!open) { setEditingName(false); setEditNameInput(''); setError(''); }
   }, [open]);
 
@@ -24,18 +25,25 @@ export default function AuthSheet({ open, onClose, authUser }) {
     if (authUser && open && displayName) onClose();
   }, [authUser?.id]);
 
-  async function handleMagicLink(e) {
+  async function handleSendCode(e) {
     e.preventDefault();
     const addr = email.trim();
     if (!addr) { setError('Enter your email address'); return; }
     setStatus('sending');
     setError('');
-    const { error: err } = await supabase.auth.signInWithOtp({
-      email: addr,
-      options: { emailRedirectTo: window.location.origin },
-    });
+    const { error: err } = await supabase.auth.signInWithOtp({ email: addr });
     if (err) { setError(err.message); setStatus('idle'); return; }
     setStatus('sent');
+  }
+
+  async function handleVerifyCode(e) {
+    e.preventDefault();
+    const token = code.trim();
+    if (token.length !== 6) { setError('Enter the 6-digit code from your email'); return; }
+    setStatus('verifying');
+    setError('');
+    const { error: err } = await supabase.auth.verifyOtp({ email: email.trim(), token, type: 'email' });
+    if (err) { setError(err.message); setStatus('sent'); return; }
   }
 
   async function handleSaveName(e) {
@@ -158,24 +166,37 @@ export default function AuthSheet({ open, onClose, authUser }) {
     );
   }
 
-  // ── Magic link sent ──────────────────────────────────────────────────────────
-  if (status === 'sent') {
+  // ── Code sent → enter OTP ────────────────────────────────────────────────────
+  if (status === 'sent' || status === 'verifying') {
     return (
       <BottomSheet open={open} onClose={onClose} title="Check your email">
         <div style={s.body}>
-          <div style={s.sentCard}>
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
-              stroke={colors.accent} strokeWidth="1.8" strokeLinecap="round">
-              <rect x="2" y="4" width="20" height="16" rx="2"/>
-              <path d="M2 7l10 7 10-7"/>
-            </svg>
-            <p style={s.sentTitle}>Magic link sent!</p>
-            <p style={s.sentSub}>
-              We emailed a sign-in link to <strong>{email}</strong>.
-              Tap it to finish signing in.
-            </p>
-          </div>
-          <button style={s.outlineBtn} onClick={() => setStatus('idle')}>
+          <p style={s.intro}>
+            We sent a 6-digit code to <strong>{email}</strong>. Enter it below.
+          </p>
+          <form onSubmit={handleVerifyCode} style={s.form}>
+            <label style={s.label}>Code</label>
+            <input
+              style={{ ...s.input, letterSpacing: '0.2em', fontSize: 22, textAlign: 'center' }}
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="000000"
+              maxLength={6}
+              value={code}
+              autoFocus
+              onChange={e => { setCode(e.target.value.replace(/\D/g, '')); setError(''); }}
+            />
+            {error && <p style={s.error}>{error}</p>}
+            <button
+              type="submit"
+              disabled={status === 'verifying'}
+              style={{ ...s.primaryBtn, ...(status === 'verifying' ? s.btnDisabled : {}) }}
+            >
+              {status === 'verifying' ? 'Verifying…' : 'Verify'}
+            </button>
+          </form>
+          <button style={s.outlineBtn} onClick={() => { setStatus('idle'); setCode(''); setError(''); }}>
             Use a different email
           </button>
         </div>
@@ -192,7 +213,7 @@ export default function AuthSheet({ open, onClose, authUser }) {
           The app works fine without signing in too.
         </p>
 
-        <form onSubmit={handleMagicLink} style={s.form}>
+        <form onSubmit={handleSendCode} style={s.form}>
           <label style={s.label}>Email</label>
           <input
             style={s.input}
@@ -209,7 +230,7 @@ export default function AuthSheet({ open, onClose, authUser }) {
             disabled={status === 'sending'}
             style={{ ...s.primaryBtn, ...(status === 'sending' ? s.btnDisabled : {}) }}
           >
-            {status === 'sending' ? 'Sending…' : 'Send magic link'}
+            {status === 'sending' ? 'Sending…' : 'Send code'}
           </button>
         </form>
       </div>
