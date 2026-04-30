@@ -4,6 +4,7 @@ import { fmt } from '../lib/settlement.js';
 import { CAT_ICONS } from '../lib/categories.js';
 import { getCurrency } from '../lib/currencies.js';
 import MenuButton from './ui/MenuButton.jsx';
+import Avatar from './ui/Avatar.jsx';
 
 /** Format a transaction amount — non-USD shows "kr5,000 ($33.44)". */
 function fmtTx(tx) {
@@ -100,13 +101,14 @@ function MiniLineChart({ expenses }) {
 }
 
 function StatsRow({ transactions, members }) {
-  const expenses   = transactions.filter(t => !t.isSettlement);
-  const totalSpent = expenses.reduce((s, t) => s + (t.amountUsd ?? t.amount), 0);
+  const expenses       = transactions.filter(t => !t.isSettlement);
+  const activeMembers  = members.filter(m => !m.removedAt);
+  const totalSpent     = expenses.reduce((s, t) => s + (t.amountUsd ?? t.amount), 0);
   return (
     <div style={s.statsRow}>
       {/* Members — far left */}
       <div style={s.stat}>
-        <span style={s.statVal}>{members.length}</span>
+        <span style={s.statVal}>{activeMembers.length}</span>
         <span style={s.statLabel}>Members</span>
       </div>
       <div style={s.statDivider} />
@@ -180,7 +182,7 @@ function TxCard({ tx, memberMap, memberId, onClick }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Dashboard({
-  project, session, members, transactions, loading,
+  project, session, members, transactions, loading, currentMember, authUser,
   onAddExpense, onEditTx, activeTab, onTabChange, onOpenProfile,
 }) {
   const [filter, setFilter]   = useState('All');
@@ -188,7 +190,6 @@ export default function Dashboard({
 
   const memberId  = session?.memberId;
   const memberMap = Object.fromEntries(members.map(m => [m.id, m.name]));
-  const myInitial = (members.find(m => m.id === memberId)?.name ?? '?')[0].toUpperCase();
 
   const expenses = transactions.filter(t => !t.isSettlement);
   const usedCats = [...new Set(expenses.map(t => t.category))];
@@ -214,9 +215,9 @@ export default function Dashboard({
         <header style={s.header}>
           <div style={s.headerTopRow}>
             <button style={s.avatarBtn} onClick={onOpenProfile} aria-label="Profile">
-              <div style={s.avatarCircle}>{myInitial}</div>
+              <Avatar member={currentMember} size={38} isActive />
             </button>
-            <MenuButton activeTab={activeTab} onTabChange={onTabChange} />
+            <MenuButton activeTab={activeTab} onTabChange={onTabChange} authUser={authUser} />
           </div>
           <h1 style={s.projectName}>{project?.name ?? '—'}</h1>
           <button style={s.codeBtn} onClick={copyCode} title="Copy project code">
@@ -345,18 +346,6 @@ const s = {
     cursor: 'pointer',
     padding: 0,
     flexShrink: 0,
-  },
-  avatarCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: '50%',
-    background: colors.accent,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 15,
-    fontWeight: 700,
-    color: '#fff',
   },
   projectName: {
     fontSize: 30,

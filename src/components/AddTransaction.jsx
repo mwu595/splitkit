@@ -53,7 +53,8 @@ function initForm(memberId, memberIds) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AddTransaction({ open, onClose, session, members }) {
-  const memberIds = members.map(m => m.id);
+  const activeMembers = members.filter(m => !m.removedAt);
+  const memberIds = activeMembers.map(m => m.id);
   const [form,                setForm]                = useState(() => initForm(session?.memberId, memberIds));
   const [error,               setError]               = useState('');
   const [saving,              setSaving]              = useState(false);
@@ -72,7 +73,7 @@ export default function AddTransaction({ open, onClose, session, members }) {
 
   useEffect(() => {
     if (open) {
-      setForm(initForm(session?.memberId, members.map(m => m.id)));
+      setForm(initForm(session?.memberId, activeMembers.map(m => m.id)));
       setError('');
       setAmountFocused(false);
       setCurrencySearch('');
@@ -192,7 +193,7 @@ export default function AddTransaction({ open, onClose, session, members }) {
           <div style={s.field}>
             <label style={s.label}>Paid by</label>
             <div style={s.pillRow}>
-              {members.map(m => {
+              {activeMembers.map(m => {
                 const active = form.paidBy === m.id;
                 return (
                   <button
@@ -226,7 +227,7 @@ export default function AddTransaction({ open, onClose, session, members }) {
               )}
             </div>
             <div style={s.pillRow}>
-              {members.map(m => {
+              {activeMembers.map(m => {
                 const active = form.splitBetween.includes(m.id);
                 return (
                   <button

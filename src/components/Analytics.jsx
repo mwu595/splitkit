@@ -3,6 +3,7 @@ import { colors, font, radius } from '../styles/tokens.js';
 import { fmt } from '../lib/settlement.js';
 import { CAT_ICONS } from '../lib/categories.js';
 import MenuButton from './ui/MenuButton.jsx';
+import Avatar from './ui/Avatar.jsx';
 
 const CAT_COLORS = {
   'Food & Drink':     { bg: '#2D1A0A', accent: '#E8732A' },
@@ -27,11 +28,10 @@ function getSpan(idx, pct) {
   return { col: 1, row: 1 };
 }
 
-export default function Analytics({ session, members, transactions, activeTab, onTabChange, onOpenProfile }) {
+export default function Analytics({ session, members, transactions, activeTab, onTabChange, onOpenProfile, currentMember, authUser }) {
   const [filterMember, setFilterMember] = useState('all');
 
   const memberId  = session?.memberId;
-  const myInitial = (members.find(m => m.id === memberId)?.name ?? '?')[0].toUpperCase();
 
   // Expenses only (exclude settlements)
   const expenses = transactions.filter(t => !t.isSettlement);
@@ -68,9 +68,9 @@ export default function Analytics({ session, members, transactions, activeTab, o
         <header style={s.header}>
           <div style={s.headerTopRow}>
             <button style={s.avatarBtn} onClick={onOpenProfile} aria-label="Profile">
-              <div style={s.avatarCircle}>{myInitial}</div>
+              <Avatar member={currentMember} size={38} isActive />
             </button>
-            <MenuButton activeTab={activeTab} onTabChange={onTabChange} />
+            <MenuButton activeTab={activeTab} onTabChange={onTabChange} authUser={authUser} />
           </div>
           <h1 style={s.pageTitle}>Analytics</h1>
         </header>
@@ -211,18 +211,6 @@ const s = {
     cursor: 'pointer',
     padding: 0,
     flexShrink: 0,
-  },
-  avatarCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: '50%',
-    background: colors.accent,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 15,
-    fontWeight: 700,
-    color: '#fff',
   },
   pageTitle: {
     fontSize: 30,

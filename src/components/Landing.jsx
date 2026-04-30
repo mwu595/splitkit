@@ -4,11 +4,15 @@ import {
   getProject,
   createProject,
   createMember,
+  updateMemberRole,
+  updateMemberName,
   getMembers,
   appendDeviceToMember,
   generateUniqueCode,
+  getProjectsForUser,
 } from '../lib/db.js';
 import { getDeviceId } from '../lib/deviceId.js';
+import AuthSheet from './AuthSheet.jsx';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -27,7 +31,9 @@ function LogoMark() {
   );
 }
 
-function MemberRow({ member, onClaim }) {
+function MemberRow({ member, onClaim, isMine, isUnclaimed }) {
+  const label = isMine ? "That's me →" : isUnclaimed ? 'Join as this name →' : 'Claim →';
+  const labelColor = isMine || isUnclaimed ? colors.accent : colors.textMuted;
   return (
     <button
       type="button"
@@ -36,25 +42,35 @@ function MemberRow({ member, onClaim }) {
       onMouseEnter={e => (e.currentTarget.style.background = colors.cardSecondary)}
       onMouseLeave={e => (e.currentTarget.style.background = colors.cardPrimary)}
     >
-      <div style={s.memberAvatar}>
+      <div style={{
+        ...s.memberAvatar,
+        background: isMine ? colors.accent : colors.settlementBg,
+        color:      isMine ? '#fff'        : colors.accent,
+      }}>
         {member.name[0].toUpperCase()}
       </div>
       <span style={s.memberName}>{member.name}</span>
-      <span style={s.memberClaim}>That's me →</span>
+      <span style={{ ...s.memberClaim, color: labelColor }}>{label}</span>
     </button>
   );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function Landing({ onSessionCreated }) {
-  const [tab,         setTab]         = useState('join');    // 'join' | 'create'
-  const [digits,      setDigits]      = useState(Array(DIGIT_COUNT).fill(''));
-  const [projectName, setProjectName] = useState('');
-  const [yourName,    setYourName]    = useState('');
-  const [error,       setError]       = useState('');
-  const [status,      setStatus]      = useState('idle');   // 'idle' | 'loading' | 'recovery' | 'joining'
-  const [members,     setMembers]     = useState([]);        // for recovery flow
+export default function Landing({ onSessionCreated, authUser }) {
+  const displayName = authUser?.user_metadata?.display_name ?? '';
+
+  const [showAuth,      setShowAuth]      = useState(false);
+  const [tab,           setTab]           = useState('join'); // 'join' | 'create' | 'existing'
+  const [digits,        setDigits]        = useState(Array(DIGIT_COUNT).fill(''));
+  const [projectName,   setProjectName]   = useState('');
+  const [yourName,      setYourName]      = useState('');
+  const [error,         setError]         = useState('');
+  const [status,        setStatus]        = useState('idle'); // 'idle'|'loading'|'recovery'|'joining'
+  const [members,       setMembers]       = useState([]);
+  const [userProjects,    setUserProjects]    = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError,   setProjectsError]   = useState('');
 
   const digitRefs = Array.from({ length: DIGIT_COUNT }, () => useRef(null));
   const code = digits.join('');
@@ -68,6 +84,30 @@ export default function Landing({ onSessionCreated }) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [tab]);
+
+  // Fetch user's linked projects when auth state changes
+  useEffect(() => {
+    if (!authUser) { setUserProjects([]); setProjectsError(''); return; }
+    setProjectsLoading(true);
+    setProjectsError('');
+    getProjectsForUser(authUser.id)
+      .then(list => { setUserProjects(list); setProjectsLoading(false); })
+      .catch(err => {
+        console.error('[splitkit] getProjectsForUser failed:', err.message);
+        setProjectsError(err.message ?? 'Could not load projects.');
+        setProjectsLoading(false);
+      });
+  }, [authUser?.id]);
+
+  // Pre-fill name from account display name
+  useEffect(() => {
+    if (displayName) setYourName(displayName);
+  }, [displayName]);
+
+  // Auto-open auth sheet to enforce name entry right after sign-in
+  useEffect(() => {
+    if (authUser && !displayName) setShowAuth(true);
+  }, [authUser?.id, displayName]);
 
   // ── Digit input handlers ────────────────────────────────────────────────────
 
@@ -127,6 +167,10 @@ export default function Landing({ onSessionCreated }) {
     try {
       const deviceId = getDeviceId();
       await appendDeviceToMember(member.id, deviceId);
+      // Override member name with account display name
+      if (displayName) {
+        try { await updateMemberName(member.id, displayName); } catch {}
+      }
       onSessionCreated({ code, memberId: member.id });
     } catch (err) {
       setError('Could not join. Please try again.');
@@ -135,7 +179,7 @@ export default function Landing({ onSessionCreated }) {
   }
 
   async function handleJoinAsNew() {
-    const name = yourName.trim();
+    const name = displayName || yourName.trim();
     if (!name) { setError('Enter your name first'); return; }
     setStatus('joining');
     setError('');
@@ -155,7 +199,7 @@ export default function Landing({ onSessionCreated }) {
     e.preventDefault();
     setError('');
 
-    const name    = yourName.trim();
+    const name    = displayName || yourName.trim();
     const projName = projectName.trim();
 
     if (!name)               { setError('Enter your name');           return; }
@@ -176,6 +220,7 @@ export default function Landing({ onSessionCreated }) {
         const deviceId = getDeviceId();
         await createProject(code, projName);
         const member = await createMember(code, name, deviceId);
+        try { await updateMemberRole(member.id, 'admin'); } catch {}
         onSessionCreated({ code, memberId: member.id });
       } catch (err) {
         setError('Something went wrong. Please try again.');
@@ -208,18 +253,45 @@ export default function Landing({ onSessionCreated }) {
 
   return (
     <div style={s.root}>
-      <div style={s.inner}>
 
-        {/* Logo */}
+      {/* ── Sticky header: never moves ──────────────────────────────── */}
+      <div style={s.stickyTop}>
+
+        {/* Logo row with auth avatar */}
         <div style={s.logoRow}>
-          <LogoMark />
-          <span style={s.wordmark}>Split Kit</span>
+          <button
+            style={s.authAvatarBtn}
+            onClick={() => setShowAuth(true)}
+            aria-label={authUser ? 'Account' : 'Sign in'}
+          >
+            {authUser ? (
+              <div style={s.authAvatarSigned}>
+                {(authUser.email?.[0] ?? '?').toUpperCase()}
+              </div>
+            ) : (
+              <div style={s.authAvatarAnon}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                  stroke={colors.textSecondary} strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="8" r="4"/>
+                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                </svg>
+              </div>
+            )}
+          </button>
+          <div style={s.wordmarkRow}>
+            <LogoMark />
+            <span style={s.wordmark}>Split Kit</span>
+          </div>
         </div>
         <p style={s.tagline}>Share expenses, settle up simply.</p>
 
         {/* Tab switcher */}
         <div style={s.tabs}>
-          {[['join', 'Join Project'], ['create', 'New Project']].map(([t, label]) => (
+          {[
+            ['join',     'Join Project'],
+            ['create',   'New Project'],
+            ...(authUser ? [['existing', 'My Projects']] : []),
+          ].map(([t, label]) => (
             <button
               key={t}
               type="button"
@@ -231,10 +303,9 @@ export default function Landing({ onSessionCreated }) {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} style={s.form}>
-
-          {/* 6-digit code */}
-          <div style={s.field}>
+        {/* 6-digit code — pinned in header so it never shifts */}
+        {tab !== 'existing' && (
+          <div style={s.codeField}>
             <div style={s.labelRow}>
               <label style={s.label}>6-digit code</label>
               {tab === 'create' && (
@@ -275,9 +346,61 @@ export default function Landing({ onSessionCreated }) {
               ))}
             </div>
           </div>
+        )}
 
-          {/* Project name — always rendered to keep layout stable; hidden on Join tab */}
-          <div style={{ ...s.field, visibility: tab === 'create' ? 'visible' : 'hidden' }}>
+      </div>
+
+      {/* ── Scrollable body ─────────────────────────────────────────── */}
+      <div style={s.scrollBody}>
+
+        {tab === 'existing' && (
+          <div style={s.existingList}>
+            {projectsLoading && (
+              <p style={s.existingHint}>Loading your projects…</p>
+            )}
+            {!projectsLoading && projectsError && (
+              <p style={{ ...s.existingHint, color: colors.accent, fontSize: 13 }}>
+                Could not load projects. Make sure the <code>user_id</code> migration has been run in Supabase.
+              </p>
+            )}
+            {!projectsLoading && !projectsError && userProjects.length === 0 && (
+              <p style={s.existingHint}>
+                No projects linked yet. Join or create one to get started.
+              </p>
+            )}
+            {!projectsLoading && userProjects.map(p => (
+              <button
+                key={p.projectCode}
+                type="button"
+                style={s.existingCard}
+                onMouseEnter={e => (e.currentTarget.style.background = colors.cardSecondary)}
+                onMouseLeave={e => (e.currentTarget.style.background = colors.cardPrimary)}
+                onClick={() => onSessionCreated({ code: p.projectCode, memberId: p.memberId })}
+              >
+                <div style={s.existingIcon}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke={colors.textSecondary} strokeWidth="2" strokeLinecap="round">
+                    <rect x="2" y="7" width="20" height="14" rx="2"/>
+                    <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
+                  </svg>
+                </div>
+                <div style={s.existingInfo}>
+                  <span style={s.existingName}>{p.projectName}</span>
+                  <span style={s.existingCode}>#{p.projectCode}</span>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke={colors.textMuted} strokeWidth="2" strokeLinecap="round">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ ...s.form, display: tab === 'existing' ? 'none' : 'flex' }}>
+
+          {/* Project name — visibility:hidden on join (keeps layout stable), display:none in recovery (not needed) */}
+          <div style={{ ...s.field, ...(tab === 'create' ? {} : status === 'recovery' ? { display: 'none' } : { visibility: 'hidden' }) }}>
             <label style={s.label}>Project name</label>
             <input
               style={s.textInput}
@@ -288,19 +411,74 @@ export default function Landing({ onSessionCreated }) {
             />
           </div>
 
-          {/* Your name */}
-          <div style={s.field}>
-            <label style={s.label}>Your name</label>
-            <input
-              style={s.textInput}
-              placeholder="How others will see you"
-              value={yourName}
-              onChange={e => { setYourName(e.target.value); setError(''); }}
-            />
-          </div>
+          {/* Your name — hidden during recovery; the Join As button makes it redundant */}
+          {status !== 'recovery' && (
+            displayName ? (
+              <div style={s.accountNameRow}>
+                <div style={s.accountNameDot} />
+                <span style={s.accountNameLabel}>
+                  Joining as <strong>{displayName}</strong>
+                </span>
+              </div>
+            ) : (
+              <div style={s.field}>
+                <label style={s.label}>Your name</label>
+                <input
+                  style={s.textInput}
+                  placeholder="How others will see you"
+                  value={yourName}
+                  onChange={e => { setYourName(e.target.value); setError(''); }}
+                />
+              </div>
+            )
+          )}
 
           {/* Error */}
           {error && <p style={s.error}>{error}</p>}
+
+          {/* Recovery confirmation — lives inside the form to inherit flex gap */}
+          {status === 'recovery' && (
+            <div style={s.recoveryCard}>
+              <button
+                type="button"
+                style={{ ...s.submitBtn, marginTop: 0, ...(isLoading ? s.submitBtnDisabled : {}) }}
+                disabled={isLoading}
+                onClick={handleJoinAsNew}
+              >
+                {isLoading ? 'Joining…' : `Join as "${displayName || yourName || '…'}"`}
+              </button>
+
+              {members.filter(m => !m.removedAt).length > 0 && (
+                <div style={s.claimSection}>
+                  <p style={s.claimLabel}>Already in this project?</p>
+                  {members
+                    .filter(m => !m.removedAt)
+                    .map(m => {
+                      const myDeviceId  = getDeviceId();
+                      const isMine      = m.deviceIds.includes(myDeviceId);
+                      const isUnclaimed = m.deviceIds.length === 0;
+                      return (
+                        <MemberRow
+                          key={m.id}
+                          member={m}
+                          onClaim={handleClaim}
+                          isMine={isMine}
+                          isUnclaimed={isUnclaimed}
+                        />
+                      );
+                    })}
+                </div>
+              )}
+
+              <button
+                type="button"
+                style={s.backBtn}
+                onClick={() => { setStatus('idle'); setMembers([]); }}
+              >
+                ← Back
+              </button>
+            </div>
+          )}
 
           {/* CTA */}
           {status !== 'recovery' && (
@@ -317,49 +495,17 @@ export default function Landing({ onSessionCreated }) {
           )}
         </form>
 
-        {/* Recovery flow */}
-        {status === 'recovery' && (
-          <div style={s.recoveryCard}>
-            <p style={s.recoveryTitle}>Who are you in this group?</p>
-            <p style={s.recoverySub}>Select your name or join as someone new.</p>
-
-            {members.map(m => (
-              <MemberRow key={m.id} member={m} onClaim={handleClaim} />
-            ))}
-
-            <div style={s.recoveryDivider} />
-
-            {/* Join as new member */}
-            <div style={s.recoveryNewRow}>
-              <span style={{ fontSize: 14, color: colors.textSecondary }}>
-                Not listed?
-              </span>
-              <button
-                type="button"
-                style={s.newMemberBtn}
-                onClick={handleJoinAsNew}
-              >
-                Join as "{yourName || '…'}"
-              </button>
-            </div>
-
-            <button
-              type="button"
-              style={s.backBtn}
-              onClick={() => { setStatus('idle'); setMembers([]); }}
-            >
-              ← Back
-            </button>
-          </div>
+        {tab !== 'existing' && (
+          <p style={s.hint}>
+            {tab === 'join'
+              ? 'Ask your group for the 6-digit code.'
+              : 'Anyone with the code can join your project.'}
+          </p>
         )}
 
-        <p style={s.hint}>
-          {tab === 'join'
-            ? 'Ask your group for the 6-digit code.'
-            : 'Anyone with the code can join your project.'}
-        </p>
-
       </div>
+
+      <AuthSheet open={showAuth} onClose={() => setShowAuth(false)} authUser={authUser} />
     </div>
   );
 }
@@ -368,25 +514,66 @@ export default function Landing({ onSessionCreated }) {
 
 const s = {
   root: {
-    minHeight: '100svh',
+    height: '100svh',
     background: colors.bg,
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 'calc(32px + env(safe-area-inset-top)) 0 calc(32px + env(safe-area-inset-bottom))',
+    flexDirection: 'column',
+    overflow: 'hidden',
     fontFamily: font.sans,
   },
-  inner: {
-    width: '100%',
-    maxWidth: 480,
-    padding: '0 20px',
-    boxSizing: 'border-box',
+  stickyTop: {
+    flexShrink: 0,
+    background: colors.bg,
+    paddingTop: 'calc(32px + env(safe-area-inset-top))',
+    paddingBottom: 20,
+  },
+  scrollBody: {
+    flex: 1,
+    overflowY: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    paddingBottom: 'calc(32px + env(safe-area-inset-bottom))',
   },
   logoRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     marginBottom: 6,
+    padding: '0 20px',
+  },
+  authAvatarBtn: {
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  authAvatarSigned: {
+    width: 38,
+    height: 38,
+    borderRadius: '50%',
+    background: colors.accent,
+    color: '#fff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 15,
+    fontWeight: 700,
+    fontFamily: font.sans,
+  },
+  authAvatarAnon: {
+    width: 38,
+    height: 38,
+    borderRadius: '50%',
+    background: colors.cardSecondary,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wordmarkRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
   },
   wordmark: {
     fontSize: 26,
@@ -397,8 +584,9 @@ const s = {
   tagline: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginBottom: 32,
+    marginBottom: 20,
     lineHeight: 1.5,
+    padding: '0 20px',
   },
   tabs: {
     display: 'flex',
@@ -406,7 +594,7 @@ const s = {
     borderRadius: radius.pill,
     padding: 4,
     gap: 4,
-    marginBottom: 28,
+    margin: '0 20px 20px',
   },
   tab: {
     flexGrow: 1,
@@ -428,10 +616,17 @@ const s = {
     background: colors.accent,
     color: '#fff',
   },
+  codeField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: '0 20px',
+  },
   form: {
     display: 'flex',
     flexDirection: 'column',
     gap: 18,
+    padding: '20px 20px 0',
   },
   field: {
     display: 'flex',
@@ -454,10 +649,12 @@ const s = {
     display: 'flex',
     gap: 8,
     alignItems: 'center',
+    width: '100%',
   },
   digitInput: {
-    width: 44,
-    height: 54,
+    flex: 1,
+    minWidth: 0,
+    height: 58,
     borderRadius: radius.input,
     border: `1.5px solid ${colors.border}`,
     background: colors.cardPrimary,
@@ -526,26 +723,22 @@ const s = {
   },
   // Recovery flow
   recoveryCard: {
-    background: colors.cardPrimary,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 16,
-    padding: '20px 16px',
-    marginTop: 4,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+  },
+  claimSection: {
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
   },
-  recoveryTitle: {
-    fontSize: 16,
+  claimLabel: {
+    fontSize: 11,
     fontWeight: 700,
-    color: colors.textPrimary,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: '0.7px',
     marginBottom: 2,
-  },
-  recoverySub: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: 8,
-    lineHeight: 1.5,
   },
   memberRow: {
     display: 'flex',
@@ -585,26 +778,6 @@ const s = {
     color: colors.accent,
     fontWeight: 600,
   },
-  recoveryDivider: {
-    height: 1,
-    background: colors.border,
-    margin: '4px 0',
-  },
-  recoveryNewRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '4px 0',
-  },
-  newMemberBtn: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: colors.accent,
-    background: 'none',
-    fontFamily: font.sans,
-    textDecoration: 'underline',
-    textUnderlineOffset: 3,
-  },
   backBtn: {
     fontSize: 13,
     color: colors.textMuted,
@@ -620,5 +793,75 @@ const s = {
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 1.5,
+    padding: '0 20px',
+  },
+  // Account name badge (replaces name field when signed in)
+  accountNameRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '11px 14px',
+    borderRadius: radius.input,
+    border: `1.5px solid ${colors.border}`,
+    background: colors.cardSecondary,
+  },
+  accountNameDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: colors.accent,
+    flexShrink: 0,
+  },
+  accountNameLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  // Existing projects tab
+  existingList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: '20px 20px 0',
+  },
+  existingHint: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    padding: '24px 0',
+    lineHeight: 1.6,
+  },
+  existingCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '14px 16px',
+    borderRadius: radius.card,
+    border: `1px solid ${colors.border}`,
+    background: colors.cardPrimary,
+    width: '100%',
+    fontFamily: font.sans,
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'background 0.12s',
+  },
+  existingIcon: { flexShrink: 0 },
+  existingInfo: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  existingName: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: colors.textPrimary,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  existingCode: {
+    fontSize: 12,
+    color: colors.textMuted,
   },
 };

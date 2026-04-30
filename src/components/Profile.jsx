@@ -1,19 +1,81 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { colors, font, radius } from '../styles/tokens.js';
-import { updateMemberName, leaveProject } from '../lib/db.js';
+import {
+  updateMemberName, leaveProject,
+  updateMemberAvatar, updateProjectName,
+  addMemberByName, removeMember, restoreMember,
+} from '../lib/db.js';
 import { getDeviceId } from '../lib/deviceId.js';
+import Avatar from './ui/Avatar.jsx';
 
-export default function Profile({ session, members, currentMember, onLeave }) {
+// ─── Image compression ────────────────────────────────────────────────────────
+
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const SIZE   = 200;
+    const canvas = document.createElement('canvas');
+    canvas.width  = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const min = Math.min(img.width, img.height);
+      const sx  = (img.width  - min) / 2;
+      const sy  = (img.height - min) / 2;
+      ctx.drawImage(img, sx, sy, min, min, 0, 0, SIZE, SIZE);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('load failed')); };
+    img.src = url;
+  });
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export default function Profile({ session, members, currentMember, project, onLeave, onJoinOrCreate, refresh }) {
+  const fileInputRef = useRef(null);
+
+  // Own name editing
   const [editing,       setEditing]       = useState(false);
   const [nameInput,     setNameInput]     = useState('');
   const [savingName,    setSavingName]    = useState(false);
   const [nameError,     setNameError]     = useState('');
+
+  // Avatar
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  // Project name (admin only)
+  const [editingProject,     setEditingProject]     = useState(false);
+  const [projectNameInput,   setProjectNameInput]   = useState('');
+  const [savingProject,      setSavingProject]      = useState(false);
+  const [projectNameError,   setProjectNameError]   = useState('');
+
+  // Add member (admin only)
+  const [addingMember,     setAddingMember]     = useState(false);
+  const [newMemberName,    setNewMemberName]    = useState('');
+  const [addingMemberSave, setAddingMemberSave] = useState(false);
+  const [addMemberError,   setAddMemberError]   = useState('');
+
+  // Remove / restore
+  const [confirmRemoveId, setConfirmRemoveId] = useState(null);
+  const [removingId,      setRemovingId]      = useState(null);
+  const [restoringId,     setRestoringId]     = useState(null);
+
+  // Leave
   const [confirmLeave,  setConfirmLeave]  = useState(false);
   const [leaving,       setLeaving]       = useState(false);
   const [leaveError,    setLeaveError]    = useState('');
-  const [copied,        setCopied]        = useState(false);
 
-  const initial = (currentMember?.name ?? '?')[0].toUpperCase();
+  // Copy code
+  const [copied, setCopied] = useState(false);
+
+  // Fall back to join-order: first member (oldest joined_at) is the project creator/admin.
+  // This works before the DB migration is run; role='admin' takes over once it is.
+  const isAdmin = currentMember?.role === 'admin' || members[0]?.id === session.memberId;
+
+  // ── Own name ───────────────────────────────────────────────────────────────
 
   function startEdit() {
     setNameInput(currentMember?.name ?? '');
@@ -29,12 +91,103 @@ export default function Profile({ session, members, currentMember, onLeave }) {
     try {
       await updateMemberName(session.memberId, trimmed);
       setEditing(false);
+      refresh();
     } catch {
       setNameError('Could not save. Please try again.');
     } finally {
       setSavingName(false);
     }
   }
+
+  // ── Avatar upload ──────────────────────────────────────────────────────────
+
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const data = await compressImage(file);
+      await updateMemberAvatar(session.memberId, data);
+      refresh();
+    } catch {
+      // silently ignore
+    } finally {
+      setUploadingAvatar(false);
+      e.target.value = '';
+    }
+  }
+
+  // ── Project name ───────────────────────────────────────────────────────────
+
+  function startEditProject() {
+    setProjectNameInput(project?.name ?? '');
+    setProjectNameError('');
+    setEditingProject(true);
+  }
+
+  async function saveProjectName() {
+    const trimmed = projectNameInput.trim();
+    if (!trimmed) { setProjectNameError('Name cannot be empty'); return; }
+    if (trimmed === project?.name) { setEditingProject(false); return; }
+    setSavingProject(true);
+    try {
+      await updateProjectName(session.code, trimmed);
+      setEditingProject(false);
+      refresh();
+    } catch {
+      setProjectNameError('Could not save. Please try again.');
+    } finally {
+      setSavingProject(false);
+    }
+  }
+
+  // ── Add member ─────────────────────────────────────────────────────────────
+
+  async function handleAddMember() {
+    const name = newMemberName.trim();
+    if (!name) { setAddMemberError('Enter a name'); return; }
+    setAddingMemberSave(true);
+    try {
+      await addMemberByName(session.code, name);
+      setNewMemberName('');
+      setAddingMember(false);
+      setAddMemberError('');
+      refresh();
+    } catch {
+      setAddMemberError('Could not add member. Try again.');
+    } finally {
+      setAddingMemberSave(false);
+    }
+  }
+
+  // ── Remove / restore ───────────────────────────────────────────────────────
+
+  async function handleRemove(memberId) {
+    setRemovingId(memberId);
+    try {
+      await removeMember(memberId);
+      setConfirmRemoveId(null);
+      refresh();
+    } catch {
+      // silently ignore
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  async function handleRestore(memberId) {
+    setRestoringId(memberId);
+    try {
+      await restoreMember(memberId);
+      refresh();
+    } catch {
+      // silently ignore
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  // ── Leave ──────────────────────────────────────────────────────────────────
 
   async function handleLeave() {
     setLeaving(true);
@@ -54,54 +207,135 @@ export default function Profile({ session, members, currentMember, onLeave }) {
     setTimeout(() => setCopied(false), 1800);
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div style={s.root}>
-      {/* ── Avatar + name ───────────────────────────────────────── */}
-      <div style={s.heroCard}>
-        <div style={s.avatar}>{initial}</div>
 
-        {editing ? (
-          <div style={s.editRow}>
-            <input
-              style={s.nameInput}
-              value={nameInput}
-              onChange={e => { setNameInput(e.target.value); setNameError(''); }}
-              onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditing(false); }}
-              autoFocus
-              maxLength={32}
-            />
-            <button
-              style={{ ...s.saveBtn, ...(savingName ? { opacity: 0.5 } : {}) }}
-              onClick={saveName}
-              disabled={savingName}
-            >
-              {savingName ? '…' : 'Save'}
-            </button>
-            <button style={s.cancelBtn} onClick={() => setEditing(false)}>
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button style={s.nameRow} onClick={startEdit}>
-            <span style={s.name}>{currentMember?.name ?? '—'}</span>
-            <span style={s.editHint}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-              Edit name
-            </span>
+      {/* ── Compact hero: avatar left, name right ───────────────── */}
+      <div style={s.heroRow}>
+
+        {/* Avatar with camera overlay */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            style={s.avatarTapBtn}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingAvatar}
+            aria-label="Change photo"
+          >
+            <Avatar member={currentMember} size={72} isActive />
+            <div style={s.cameraOverlay}>
+              {uploadingAvatar ? (
+                <span style={{ fontSize: 11, color: '#fff', fontWeight: 700 }}>…</span>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="#fff" strokeWidth="2" strokeLinecap="round">
+                  <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              )}
+            </div>
           </button>
-        )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleAvatarChange}
+          />
+        </div>
 
-        {nameError && <p style={s.inlineError}>{nameError}</p>}
+        {/* Name + badges */}
+        <div style={s.heroInfo}>
+          {editing ? (
+            <div style={s.editRow}>
+              <input
+                style={s.nameInput}
+                value={nameInput}
+                onChange={e => { setNameInput(e.target.value); setNameError(''); }}
+                onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditing(false); }}
+                autoFocus
+                maxLength={32}
+              />
+              <button
+                style={{ ...s.saveBtn, ...(savingName ? { opacity: 0.5 } : {}) }}
+                onClick={saveName}
+                disabled={savingName}
+              >
+                {savingName ? '…' : 'Save'}
+              </button>
+              <button style={s.cancelBtn} onClick={() => setEditing(false)}>✕</button>
+            </div>
+          ) : (
+            <button style={s.nameBtn} onClick={startEdit}>
+              <span style={s.nameText}>{currentMember?.name ?? '—'}</span>
+              <span style={s.editHint}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+                Edit name
+              </span>
+            </button>
+          )}
+          {nameError && <p style={s.inlineError}>{nameError}</p>}
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            {isAdmin && <span style={s.adminBadge}>admin</span>}
+            <span style={s.youBadge}>you</span>
+          </div>
+        </div>
       </div>
 
       {/* ── Project info ─────────────────────────────────────────── */}
       <section style={s.section}>
         <p style={s.sectionLabel}>Project</p>
         <div style={s.card}>
+
+          {/* Project name row */}
+          <div style={s.infoRow}>
+            <span style={s.infoLabel}>Name</span>
+            {isAdmin ? (
+              editingProject ? (
+                <div style={s.inlineEditRow}>
+                  <input
+                    style={s.inlineInput}
+                    value={projectNameInput}
+                    onChange={e => { setProjectNameInput(e.target.value); setProjectNameError(''); }}
+                    onKeyDown={e => { if (e.key === 'Enter') saveProjectName(); if (e.key === 'Escape') setEditingProject(false); }}
+                    autoFocus
+                    maxLength={40}
+                  />
+                  <button
+                    style={{ ...s.saveBtn, ...(savingProject ? { opacity: 0.5 } : {}) }}
+                    onClick={saveProjectName}
+                    disabled={savingProject}
+                  >
+                    {savingProject ? '…' : 'Save'}
+                  </button>
+                  <button style={s.cancelBtn} onClick={() => setEditingProject(false)}>✕</button>
+                </div>
+              ) : (
+                <button style={s.editableValue} onClick={startEditProject}>
+                  <span style={{ color: colors.textPrimary, fontSize: 14, fontWeight: 500 }}>
+                    {project?.name ?? '—'}
+                  </span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                    stroke={colors.textMuted} strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+              )
+            ) : (
+              <span style={{ color: colors.textPrimary, fontSize: 14, fontWeight: 500 }}>{project?.name ?? '—'}</span>
+            )}
+          </div>
+          {projectNameError && <p style={{ ...s.inlineError, padding: '0 16px 10px' }}>{projectNameError}</p>}
+
+          <div style={s.divider} />
+
+          {/* Code row */}
           <div style={s.infoRow}>
             <span style={s.infoLabel}>Code</span>
             <button style={s.codeBtn} onClick={copyCode}>
@@ -115,35 +349,151 @@ export default function Profile({ session, members, currentMember, onLeave }) {
               </span>
             </button>
           </div>
+
         </div>
       </section>
 
-      {/* ── Members ──────────────────────────────────────────────── */}
-      <section style={s.section}>
-        <p style={s.sectionLabel}>Members · {members.length}</p>
-        <div style={s.card}>
-          {members.map((m, i) => {
-            const isSelf = m.id === session.memberId;
-            return (
-              <div key={m.id}>
-                {i > 0 && <div style={s.divider} />}
-                <div style={s.memberRow}>
-                  <div style={{
-                    ...s.memberAvatar,
-                    background: isSelf ? colors.accent : colors.cardSecondary,
-                    color:      isSelf ? '#fff'        : colors.textSecondary,
-                  }}>
-                    {m.name[0].toUpperCase()}
+      {/* ── Admin: Add Member ────────────────────────────────────── */}
+      {isAdmin && (
+        <section style={s.section}>
+          <p style={s.sectionLabel}>Add Member</p>
+          {addingMember ? (
+            <div style={s.addMemberForm}>
+              <input
+                style={s.addMemberInput}
+                placeholder="Member's name"
+                value={newMemberName}
+                onChange={e => { setNewMemberName(e.target.value); setAddMemberError(''); }}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddMember(); if (e.key === 'Escape') { setAddingMember(false); setNewMemberName(''); } }}
+                autoFocus
+                maxLength={32}
+              />
+              <button
+                style={{ ...s.saveBtn, ...(addingMemberSave ? { opacity: 0.5 } : {}) }}
+                onClick={handleAddMember}
+                disabled={addingMemberSave}
+              >
+                {addingMemberSave ? '…' : 'Add'}
+              </button>
+              <button style={s.cancelBtn} onClick={() => { setAddingMember(false); setNewMemberName(''); setAddMemberError(''); }}>✕</button>
+            </div>
+          ) : (
+            <button style={s.addMemberBtn} onClick={() => setAddingMember(true)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add Member
+            </button>
+          )}
+          {addMemberError && <p style={{ ...s.inlineError, marginTop: 8 }}>{addMemberError}</p>}
+          <p style={s.addMemberHint}>
+            They'll see this name in the join flow and can claim it.
+          </p>
+        </section>
+      )}
+
+      {/* ── Active members list ──────────────────────────────────── */}
+      {(() => {
+        const activeMembers  = members.filter(m => !m.removedAt);
+        const removedMembers = members.filter(m => !!m.removedAt);
+
+        function MemberCard({ list }) {
+          return (
+            <div style={s.card}>
+              {list.map((m, i) => {
+                const isSelf     = m.id === session.memberId;
+                const isRemoved  = !!m.removedAt;
+                const confirming = confirmRemoveId === m.id;
+                const showRemove  = isAdmin && !isSelf && !isRemoved;
+                const showRestore = isAdmin && isRemoved;
+
+                return (
+                  <div key={m.id}>
+                    {i > 0 && <div style={s.divider} />}
+
+                    {confirming ? (
+                      <div style={s.confirmRow}>
+                        <span style={{ fontSize: 13, color: colors.textSecondary, flex: 1 }}>
+                          Remove <strong style={{ color: colors.textPrimary }}>{m.name}</strong>?
+                        </span>
+                        <button style={s.cancelSmallBtn} onClick={() => setConfirmRemoveId(null)}>
+                          Cancel
+                        </button>
+                        <button
+                          style={{ ...s.confirmRemoveBtn, ...(removingId === m.id ? { opacity: 0.5 } : {}) }}
+                          onClick={() => handleRemove(m.id)}
+                          disabled={removingId === m.id}
+                        >
+                          {removingId === m.id ? '…' : 'Remove'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ ...s.memberRow, ...(isRemoved ? s.memberRowRemoved : {}) }}>
+                        <Avatar
+                          member={isRemoved ? { ...m, avatarData: null } : m}
+                          size={34}
+                          isActive={isSelf && !isRemoved}
+                        />
+                        <div style={s.memberMeta}>
+                          <span style={{
+                            fontSize: 14, fontWeight: 600,
+                            color: isRemoved ? colors.textMuted : colors.textPrimary,
+                          }}>
+                            {m.name}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {(m.role === 'admin' || members[0]?.id === m.id) && <span style={s.adminBadgeSmall}>admin</span>}
+                          {isSelf && <span style={s.youBadge}>you</span>}
+                        </div>
+                        {showRemove && (
+                          <button style={s.removeBtn} onClick={() => setConfirmRemoveId(m.id)}>
+                            Remove
+                          </button>
+                        )}
+                        {showRestore && (
+                          <button
+                            style={{ ...s.restoreBtn, ...(restoringId === m.id ? { opacity: 0.5 } : {}) }}
+                            onClick={() => handleRestore(m.id)}
+                            disabled={restoringId === m.id}
+                          >
+                            {restoringId === m.id ? '…' : 'Restore'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, flex: 1 }}>
-                    {m.name}
-                  </span>
-                  {isSelf && <span style={s.youBadge}>you</span>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          );
+        }
+
+        return (
+          <>
+            <section style={s.section}>
+              <p style={s.sectionLabel}>Members · {activeMembers.length}</p>
+              <MemberCard list={activeMembers} />
+            </section>
+
+            {removedMembers.length > 0 && (
+              <section style={s.section}>
+                <p style={s.sectionLabel}>Removed Members</p>
+                <MemberCard list={removedMembers} />
+              </section>
+            )}
+          </>
+        );
+      })()}
+
+
+      {/* ── Join or create another project ───────────────────────── */}
+      <section style={s.section}>
+        <button style={s.joinBtn} onClick={onJoinOrCreate}>
+          Join another or start a new project
+        </button>
       </section>
 
       {/* ── Leave project ────────────────────────────────────────── */}
@@ -178,6 +528,7 @@ export default function Profile({ session, members, currentMember, onLeave }) {
           </div>
         )}
       </section>
+
     </div>
   );
 }
@@ -189,94 +540,109 @@ const s = {
     fontFamily: font.sans,
     paddingBottom: 32,
   },
-  heroCard: {
+
+  // ── Hero row ───────────────────────────────────────────────────
+  heroRow: {
     margin: '20px 20px 0',
     background: colors.cardPrimary,
-    borderRadius: radius.card,
     border: `1px solid ${colors.border}`,
-    padding: '24px 20px 20px',
+    borderRadius: radius.card,
+    padding: '20px',
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
   },
-  avatar: {
-    width: 80,
-    height: 80,
+  avatarTapBtn: {
+    position: 'relative',
+    background: 'none',
+    border: 'none',
+    padding: 0,
+    cursor: 'pointer',
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
     borderRadius: '50%',
     background: colors.accent,
-    color: '#fff',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 32,
-    fontWeight: 700,
-    flexShrink: 0,
-    boxShadow: '0 4px 20px rgba(232,48,42,0.35)',
+    border: `2px solid ${colors.cardPrimary}`,
   },
-  nameRow: {
+  heroInfo: {
+    flex: 1,
+    minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
-    gap: 4,
+    alignItems: 'flex-start',
+  },
+  nameBtn: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 3,
     background: 'none',
     border: 'none',
     cursor: 'pointer',
     fontFamily: font.sans,
     padding: 0,
   },
-  name: {
-    fontSize: 22,
+  nameText: {
+    fontSize: 20,
     fontWeight: 700,
     color: colors.textPrimary,
-    letterSpacing: '-0.4px',
+    letterSpacing: '-0.3px',
   },
   editHint: {
     display: 'flex',
     alignItems: 'center',
-    gap: 5,
-    fontSize: 12,
+    gap: 4,
+    fontSize: 11,
     color: colors.textMuted,
     fontWeight: 500,
   },
   editRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     width: '100%',
   },
   nameInput: {
     flex: 1,
-    padding: '10px 12px',
+    padding: '8px 10px',
     borderRadius: radius.input,
     border: `1.5px solid ${colors.accent}`,
     background: colors.cardSecondary,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 600,
     color: colors.textPrimary,
     fontFamily: font.sans,
-    textAlign: 'center',
+    minWidth: 0,
   },
   saveBtn: {
-    padding: '10px 16px',
+    padding: '8px 12px',
     borderRadius: radius.input,
     background: colors.accent,
     border: 'none',
     color: '#fff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     cursor: 'pointer',
     fontFamily: font.sans,
     flexShrink: 0,
   },
   cancelBtn: {
-    padding: '10px 14px',
+    padding: '8px 10px',
     borderRadius: radius.input,
     background: colors.cardSecondary,
     border: `1.5px solid ${colors.border}`,
-    color: colors.textSecondary,
-    fontSize: 13,
-    fontWeight: 500,
+    color: colors.textMuted,
+    fontSize: 12,
     cursor: 'pointer',
     fontFamily: font.sans,
     flexShrink: 0,
@@ -284,8 +650,42 @@ const s = {
   inlineError: {
     fontSize: 12,
     color: colors.accent,
-    textAlign: 'center',
+    marginTop: 4,
   },
+  adminBadge: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: '#E8C92A',
+    background: 'rgba(232,201,42,0.15)',
+    border: '1px solid rgba(232,201,42,0.3)',
+    borderRadius: 4,
+    padding: '2px 7px',
+    letterSpacing: '0.3px',
+    textTransform: 'uppercase',
+  },
+  adminBadgeSmall: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: '#E8C92A',
+    background: 'rgba(232,201,42,0.15)',
+    border: '1px solid rgba(232,201,42,0.3)',
+    borderRadius: 4,
+    padding: '1px 5px',
+    letterSpacing: '0.3px',
+    textTransform: 'uppercase',
+    flexShrink: 0,
+  },
+  youBadge: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: colors.accent,
+    background: 'rgba(232,48,42,0.12)',
+    borderRadius: 4,
+    padding: '2px 6px',
+    flexShrink: 0,
+  },
+
+  // ── Sections ───────────────────────────────────────────────────
   section: {
     padding: '20px 20px 0',
   },
@@ -303,16 +703,54 @@ const s = {
     border: `1px solid ${colors.border}`,
     overflow: 'hidden',
   },
+  divider: {
+    height: 1,
+    background: colors.border,
+    margin: '0 16px',
+  },
+
+  // ── Project section ────────────────────────────────────────────
   infoRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '14px 16px',
+    padding: '13px 16px',
+    gap: 10,
   },
   infoLabel: {
     fontSize: 13,
     color: colors.textSecondary,
     fontWeight: 500,
+    flexShrink: 0,
+  },
+  editableValue: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontFamily: font.sans,
+    padding: 0,
+  },
+  inlineEditRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
+  },
+  inlineInput: {
+    flex: 1,
+    padding: '7px 10px',
+    borderRadius: radius.input,
+    border: `1.5px solid ${colors.accent}`,
+    background: colors.cardSecondary,
+    fontSize: 14,
+    fontWeight: 500,
+    color: colors.textPrimary,
+    fontFamily: font.sans,
+    minWidth: 0,
   },
   codeBtn: {
     display: 'flex',
@@ -339,36 +777,146 @@ const s = {
     fontWeight: 700,
     color: colors.textPrimary,
   },
-  divider: {
-    height: 1,
-    background: colors.border,
-    margin: '0 16px',
+
+  // ── Add member ─────────────────────────────────────────────────
+  addMemberBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    padding: '13px 16px',
+    borderRadius: radius.card,
+    border: `1.5px dashed ${colors.border}`,
+    background: 'transparent',
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: 500,
+    cursor: 'pointer',
+    fontFamily: font.sans,
   },
+  addMemberForm: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  addMemberInput: {
+    flex: 1,
+    padding: '11px 13px',
+    borderRadius: radius.input,
+    border: `1.5px solid ${colors.accent}`,
+    background: colors.cardPrimary,
+    fontSize: 14,
+    color: colors.textPrimary,
+    fontFamily: font.sans,
+    minWidth: 0,
+  },
+  addMemberHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 8,
+    lineHeight: 1.4,
+  },
+
+  // ── Member rows ────────────────────────────────────────────────
   memberRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
-    padding: '13px 16px',
+    gap: 10,
+    padding: '11px 16px',
   },
-  memberAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: '50%',
+  memberRowRemoved: {
+    opacity: 0.55,
+  },
+  memberMeta: {
+    flex: 1,
+    minWidth: 0,
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 13,
-    fontWeight: 700,
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  removedLabel: {
+    fontSize: 10,
+    fontWeight: 600,
+    color: colors.textMuted,
+    background: colors.cardSecondary,
+    borderRadius: 4,
+    padding: '1px 5px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.3px',
     flexShrink: 0,
   },
-  youBadge: {
-    fontSize: 10,
-    fontWeight: 700,
+  removeBtn: {
+    padding: '5px 10px',
+    borderRadius: 7,
+    border: `1px solid ${colors.settlementBorder}`,
+    background: colors.settlementBg,
     color: colors.accent,
-    background: 'rgba(232,48,42,0.12)',
-    borderRadius: 4,
-    padding: '2px 6px',
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: font.sans,
+    flexShrink: 0,
   },
+  restoreBtn: {
+    padding: '5px 10px',
+    borderRadius: 7,
+    border: `1px solid ${colors.border}`,
+    background: colors.cardSecondary,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: font.sans,
+    flexShrink: 0,
+  },
+  confirmRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '11px 16px',
+    background: colors.settlementBg,
+  },
+  cancelSmallBtn: {
+    padding: '5px 10px',
+    borderRadius: 7,
+    border: `1px solid ${colors.border}`,
+    background: colors.cardSecondary,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: font.sans,
+    flexShrink: 0,
+  },
+  confirmRemoveBtn: {
+    padding: '5px 10px',
+    borderRadius: 7,
+    border: 'none',
+    background: colors.accent,
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: font.sans,
+    flexShrink: 0,
+  },
+
+  // ── Join / create ──────────────────────────────────────────────
+  joinBtn: {
+    width: '100%',
+    padding: '14px',
+    borderRadius: radius.input,
+    background: 'transparent',
+    border: `1.5px solid ${colors.border}`,
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: font.sans,
+  },
+
+  // ── Leave ──────────────────────────────────────────────────────
   leaveBtn: {
     width: '100%',
     padding: '14px',

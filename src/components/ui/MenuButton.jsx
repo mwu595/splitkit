@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { colors, font } from '../../styles/tokens.js';
 
-const ITEMS = [
+const BASE_ITEMS = [
   {
     id: 'dashboard',
     label: 'Expenses',
@@ -40,7 +40,19 @@ const ITEMS = [
   },
 ];
 
-export default function MenuButton({ activeTab, onTabChange }) {
+const MY_PROJECTS_ITEM = {
+  id: 'myprojects',
+  label: 'My Projects',
+  icon: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M3 7h18M3 12h18M3 17h18"/>
+    </svg>
+  ),
+};
+
+export default function MenuButton({ activeTab, onTabChange, authUser }) {
+  const ITEMS = authUser ? [...BASE_ITEMS, MY_PROJECTS_ITEM] : BASE_ITEMS;
   const [open, setOpen] = useState(false);
 
   return (

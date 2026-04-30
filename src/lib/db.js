@@ -10,12 +10,19 @@ import { supabase } from './supabase.js';
 
 function mapMember(row) {
   if (!row) return null;
+  const rawIds           = row.device_ids ?? [];
+  const removedSentinel  = rawIds.includes('__removed__');
   return {
-    id:         row.id,
+    id:          row.id,
     projectCode: row.project_code,
-    name:       row.name,
-    deviceIds:  row.device_ids ?? [],
-    joinedAt:   row.joined_at,
+    name:        row.name,
+    deviceIds:   removedSentinel ? [] : rawIds,   // hide sentinel from join-flow logic
+    joinedAt:    row.joined_at,
+    role:        row.role        ?? 'member',
+    avatarData:  row.avatar_data ?? null,
+    // truthy if removed via sentinel OR via removed_at column (post-migration)
+    removedAt:   row.removed_at ?? (removedSentinel ? '__removed__' : null),
+    userId:      row.user_id    ?? null,
   };
 }
 
@@ -99,6 +106,24 @@ export async function createMember(code, name, deviceId) {
   return mapMember(data);
 }
 
+export async function updateMemberRole(memberId, role) {
+  const { error } = await supabase
+    .from('members')
+    .update({ role })
+    .eq('id', memberId);
+  if (error) throw error;
+}
+
+export async function addMemberByName(projectCode, name) {
+  const { data, error } = await supabase
+    .from('members')
+    .insert({ project_code: projectCode, name, device_ids: [] })
+    .select()
+    .single();
+  if (error) throw error;
+  return mapMember(data);
+}
+
 export async function appendDeviceToMember(memberId, deviceId) {
   const { error } = await supabase.rpc('append_device_id', {
     member_id: memberId,
@@ -120,6 +145,48 @@ export async function leaveProject(memberId, deviceId) {
     member_id: memberId,
     device_id: deviceId,
   });
+  if (error) throw error;
+}
+
+export async function removeMember(memberId) {
+  // Write sentinel to device_ids — works without DB migration
+  const { error } = await supabase
+    .from('members')
+    .update({ device_ids: ['__removed__'] })
+    .eq('id', memberId);
+  if (error) throw error;
+  // Best-effort: also set removed_at if the column exists (post-migration)
+  await supabase.from('members')
+    .update({ removed_at: new Date().toISOString() })
+    .eq('id', memberId);
+}
+
+export async function restoreMember(memberId) {
+  // Clear sentinel — member appears as unclaimed and can rejoin with the project code
+  const { error } = await supabase
+    .from('members')
+    .update({ device_ids: [] })
+    .eq('id', memberId);
+  if (error) throw error;
+  // Best-effort: also clear removed_at if the column exists (post-migration)
+  await supabase.from('members')
+    .update({ removed_at: null })
+    .eq('id', memberId);
+}
+
+export async function updateProjectName(projectCode, name) {
+  const { error } = await supabase
+    .from('projects')
+    .update({ name })
+    .eq('code', projectCode);
+  if (error) throw error;
+}
+
+export async function updateMemberAvatar(memberId, avatarData) {
+  const { error } = await supabase
+    .from('members')
+    .update({ avatar_data: avatarData })
+    .eq('id', memberId);
   if (error) throw error;
 }
 
@@ -192,4 +259,44 @@ export async function addSettlement(code, from, to, amount, fromName, toName) {
     splitBetween: [to],
     isSettlement: true,
   });
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export async function linkMemberToUser(memberId, userId) {
+  const { error } = await supabase
+    .from('members')
+    .update({ user_id: userId })
+    .eq('id', memberId);
+  if (error) {
+    console.error('[splitkit] linkMemberToUser failed — is the user_id migration run?', error.message);
+    throw error;
+  }
+}
+
+export async function getProjectsForUser(userId) {
+  // Step 1: get member rows for this auth user (no removed_at filter — column may not exist)
+  const { data: memberRows, error: memberErr } = await supabase
+    .from('members')
+    .select('id, project_code, joined_at')
+    .eq('user_id', userId);
+  if (memberErr) throw memberErr;
+  if (!memberRows?.length) return [];
+
+  // Step 2: fetch project names in one IN query
+  const codes = [...new Set(memberRows.map(r => r.project_code))];
+  const { data: projectRows, error: projErr } = await supabase
+    .from('projects')
+    .select('code, name')
+    .in('code', codes);
+  if (projErr) throw projErr;
+
+  const nameMap = Object.fromEntries((projectRows ?? []).map(p => [p.code, p.name]));
+
+  return memberRows.map(row => ({
+    memberId:    row.id,
+    projectCode: row.project_code,
+    projectName: nameMap[row.project_code] ?? row.project_code,
+    joinedAt:    row.joined_at,
+  }));
 }

@@ -16,7 +16,7 @@ function Chevron() {
   );
 }
 
-export default function EditTransaction({ open, onClose, session, members, transaction }) {
+export default function EditTransaction({ open, onClose, onDeleted, session, members, transaction }) {
   const [form,                setForm]                = useState(null);
   const [error,               setError]               = useState('');
   const [saving,              setSaving]              = useState(false);
@@ -109,7 +109,9 @@ export default function EditTransaction({ open, onClose, session, members, trans
     setDeleting(true);
     try {
       await deleteTransaction(transaction.id);
-      onClose();
+      setConfirmDelete(false);
+      setDeleting(false);
+      onDeleted ? onDeleted() : onClose();
     } catch {
       setError('Could not delete. Please try again.');
       setDeleting(false);
@@ -144,7 +146,7 @@ export default function EditTransaction({ open, onClose, session, members, trans
           ) : (
             <div style={s.confirmBox}>
               <p style={s.confirmText}>
-                Delete <strong style={{ color: colors.textPrimary }}>"{transaction.description}"</strong>?
+                Delete <strong style={{ color: colors.textPrimary }}>"{transaction?.description}"</strong>?
                 <span style={{ color: colors.textMuted }}> This cannot be undone.</span>
               </p>
               <div style={{ display: 'flex', gap: 10 }}>

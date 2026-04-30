@@ -1,8 +1,8 @@
 # Split Kit
 
-**Expense splitting for people who don't want to deal with accounts.**
+**Expense splitting for groups. No account required.**
 
-Create a trip. Share a 6-digit code. Everyone's in. No sign-up, no passwords, no "wait I didn't get the invite email." Just split the bill and move on with your life.
+Create a trip. Share a 6-digit code. Everyone's in. No sign-up, no passwords, no "wait I didn't get the invite email." Just split the bill and move on with your life. Sign in with a magic link if you want your projects saved across devices — entirely optional.
 
 ---
 
@@ -27,6 +27,7 @@ A project lives as long as you need it — a weekend trip, a group dinner, a two
 - **Real-time sync** — log a expense and your whole group sees it immediately
 - **Travel-tuned categories** — Flights, Accommodation, Activities, Car Rental, Visa & Fees, and more — ordered by how often you'll actually use them
 - **Spend trend** — mini chart showing daily spend over the trip, so you can see exactly when things got out of hand
+- **Optional accounts** — sign in with a magic link to save your projects to an account and access them from any device; the app works fine without it
 - **Installable** — add to your home screen; works like a native app
 
 ---
@@ -45,7 +46,7 @@ cp .env.example .env   # add VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
 
-Supabase: run `supabase/schema.sql` in the SQL Editor, then disable RLS on all three tables.
+Supabase: run `supabase/schema.sql` in the SQL Editor, then disable RLS on all three tables. To enable magic link sign-in, go to Authentication → URL Configuration and add your app's URL to the redirect allow-list.
 
 Deploy: push to GitHub, import in Vercel, add the two env vars. Done.
 

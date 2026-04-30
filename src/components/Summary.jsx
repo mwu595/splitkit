@@ -4,6 +4,7 @@ import { computeBalances, minimizeTransactions, fmt } from '../lib/settlement.js
 import { addSettlement } from '../lib/db.js';
 import BottomSheet from './ui/BottomSheet.jsx';
 import MenuButton from './ui/MenuButton.jsx';
+import Avatar from './ui/Avatar.jsx';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -107,7 +108,7 @@ function TransferCard({ transfer, isMine, onSettle }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function Summary({ session, members, transactions, activeTab, onTabChange, onOpenProfile }) {
+export default function Summary({ session, members, transactions, activeTab, onTabChange, onOpenProfile, currentMember, authUser }) {
   const [pickerOpen,    setPickerOpen]    = useState(false);
   const [confirmOpen,   setConfirmOpen]   = useState(false);
   const [selected,      setSelected]      = useState(null); // transfer object
@@ -117,7 +118,6 @@ export default function Summary({ session, members, transactions, activeTab, onT
 
   const memberId  = session?.memberId;
   const memberMap = Object.fromEntries(members.map(m => [m.id, m.name]));
-  const myInitial = (members.find(m => m.id === memberId)?.name ?? '?')[0].toUpperCase();
 
   const balances  = computeBalances(members, transactions);
   const myBalance = balances.find(b => b.id === memberId)?.balance ?? 0;
@@ -179,9 +179,9 @@ export default function Summary({ session, members, transactions, activeTab, onT
         <header style={s.header}>
           <div style={s.headerTopRow}>
             <button style={s.avatarBtn} onClick={onOpenProfile} aria-label="Profile">
-              <div style={s.avatarCircle}>{myInitial}</div>
+              <Avatar member={currentMember} size={38} isActive />
             </button>
-            <MenuButton activeTab={activeTab} onTabChange={onTabChange} />
+            <MenuButton activeTab={activeTab} onTabChange={onTabChange} authUser={authUser} />
           </div>
           <h1 style={s.title}>Summary</h1>
         </header>
@@ -379,18 +379,6 @@ const s = {
     cursor: 'pointer',
     padding: 0,
     flexShrink: 0,
-  },
-  avatarCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: '50%',
-    background: colors.accent,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 15,
-    fontWeight: 700,
-    color: '#fff',
   },
   title: {
     fontSize: 30,
