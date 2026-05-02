@@ -4,6 +4,7 @@ Follows [Semantic Versioning](https://semver.org). Most recent first.
 
 ---
 
+- **v1.2.1** — 2026-05-02 — bug fix
 - **v1.2.0** — 2026-05-01 — smarter settlements, avatar cropper, bug fixes, UI updates
 - **v1.1.2** — 2026-04-30 — switched to email OTP
 - **v1.1.1** — 2026-04-30 — avatars actually work now, new logo, misc fixes
