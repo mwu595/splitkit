@@ -13,6 +13,7 @@ import MyProjects      from './components/MyProjects.jsx';
 import Profile         from './components/Profile.jsx';
 import AnimatedScreen  from './components/ui/AnimatedScreen.jsx';
 import BottomSheet     from './components/ui/BottomSheet.jsx';
+import BottomNav       from './components/ui/BottomNav.jsx';
 import AddTransaction  from './components/AddTransaction.jsx';
 import EditTransaction from './components/EditTransaction.jsx';
 import InstallPrompt   from './components/InstallPrompt.jsx';
@@ -120,6 +121,9 @@ export default function App() {
           refresh={refresh}
         />
       </BottomSheet>
+
+      {/* ── Bottom nav ───────────────────────────────────────── */}
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} authUser={authUser} />
 
       {/* ── Install prompt ───────────────────────────────────── */}
       <InstallPrompt />

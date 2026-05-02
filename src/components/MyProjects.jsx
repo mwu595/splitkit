@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { colors, font, radius } from '../styles/tokens.js';
 import { getProjectsForUser } from '../lib/db.js';
-import MenuButton from './ui/MenuButton.jsx';
 import Avatar from './ui/Avatar.jsx';
 
 export default function MyProjects({
@@ -34,7 +33,6 @@ export default function MyProjects({
             <button style={s.avatarBtn} onClick={onOpenProfile} aria-label="Profile">
               <Avatar member={currentMember} size={38} isActive />
             </button>
-            <MenuButton activeTab={activeTab} onTabChange={onTabChange} authUser={authUser} />
           </div>
           <h1 style={s.title}>My Projects</h1>
         </header>
@@ -171,7 +169,7 @@ const s = {
     flex: 1,
     overflowY: 'auto',
     WebkitOverflowScrolling: 'touch',
-    paddingBottom: 'calc(40px + env(safe-area-inset-bottom))',
+    paddingBottom: 'calc(96px + env(safe-area-inset-bottom))',
   },
   hint: {
     fontSize: 14,

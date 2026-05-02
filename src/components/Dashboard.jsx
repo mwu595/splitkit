@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { colors, font, radius } from '../styles/tokens.js';
-import { fmt } from '../lib/settlement.js';
+import { fmt, computeBalances } from '../lib/settlement.js';
 import { CAT_ICONS } from '../lib/categories.js';
 import { getCurrency } from '../lib/currencies.js';
-import MenuButton from './ui/MenuButton.jsx';
 import Avatar from './ui/Avatar.jsx';
 
 /** Format a transaction amount — non-USD shows "kr5,000 ($33.44)". */
@@ -39,88 +38,34 @@ function groupByDate(transactions) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** SVG line chart of daily spend — style: smooth white line, tick marks, gradient fill */
-function MiniLineChart({ expenses }) {
-  // Sum USD amount per date
-  const byDate = {};
-  for (const tx of expenses) {
-    byDate[tx.date] = (byDate[tx.date] ?? 0) + (tx.amountUsd ?? tx.amount);
-  }
-  const sorted = Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b));
-  if (sorted.length < 2) return (
-    <div style={s.chartWrap}>
-      <p style={s.chartEmpty}>Log expenses on 2+ days to see spend trend</p>
-    </div>
-  );
+function StatsRow({ transactions, members, memberId }) {
+  const expenses      = transactions.filter(t => !t.isSettlement);
+  const activeMembers = members.filter(m => !m.removedAt);
+  const totalSpent    = expenses.reduce((s, t) => s + (t.amountUsd ?? t.amount), 0);
 
-  const values = sorted.map(([, v]) => v);
-  const max    = Math.max(...values);
-  const W = 100, H = 44, pad = 4;
+  const balances  = computeBalances(members, transactions);
+  const myBalance = balances.find(b => b.id === memberId)?.balance ?? 0;
+  const isPositive = myBalance > 0.005;
+  const isNegative = myBalance < -0.005;
+  const balanceColor = isPositive ? colors.positive : isNegative ? colors.accent : colors.textSecondary;
+  const balanceLabel = isPositive ? "You're owed" : isNegative ? 'You owe' : 'Settled up';
 
-  // Map to SVG coords (y=0 is top; higher spend = lower y value)
-  const pts = values.map((v, i) => [
-    pad + (i / (values.length - 1)) * (W - pad * 2),
-    H - pad - (v / (max || 1)) * (H - pad * 2),
-  ]);
-
-  // Smooth cubic bezier — midpoint control handles
-  let line = `M${pts[0][0]},${pts[0][1]}`;
-  for (let i = 1; i < pts.length; i++) {
-    const [x0, y0] = pts[i - 1];
-    const [x1, y1] = pts[i];
-    const cx = (x0 + x1) / 2;
-    line += ` C${cx},${y0} ${cx},${y1} ${x1},${y1}`;
-  }
-  const area = `${line} L${pts[pts.length - 1][0]},${H} L${pts[0][0]},${H} Z`;
-
-  return (
-    <div style={s.chartWrap}>
-      <svg
-        width="100%"
-        height={H}
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        style={{ display: 'block' }}
-      >
-        <defs>
-          <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor="#fff" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#fff" stopOpacity="0.01" />
-          </linearGradient>
-        </defs>
-        {/* Gradient fill under the line */}
-        <path d={area} fill="url(#spendGrad)" />
-        {/* Smooth line */}
-        <path d={line} fill="none"
-          stroke="rgba(255,255,255,0.88)" strokeWidth="2"
-          strokeLinecap="round" strokeLinejoin="round"
-        />
-      </svg>
-    </div>
-  );
-}
-
-function StatsRow({ transactions, members }) {
-  const expenses       = transactions.filter(t => !t.isSettlement);
-  const activeMembers  = members.filter(m => !m.removedAt);
-  const totalSpent     = expenses.reduce((s, t) => s + (t.amountUsd ?? t.amount), 0);
   return (
     <div style={s.statsRow}>
-      {/* Members — far left */}
       <div style={s.stat}>
         <span style={s.statVal}>{activeMembers.length}</span>
         <span style={s.statLabel}>Members</span>
       </div>
       <div style={s.statDivider} />
-      {/* Total spent */}
       <div style={s.stat}>
         <span style={s.statVal}>{fmt(totalSpent)}</span>
         <span style={s.statLabel}>Total spent</span>
       </div>
-      {/* Divider before chart */}
       <div style={s.statDivider} />
-      {/* Mini line chart fills the rest */}
-      <MiniLineChart expenses={expenses} />
+      <div style={s.stat}>
+        <span style={{ ...s.statVal, color: balanceColor }}>{fmt(Math.abs(myBalance))}</span>
+        <span style={s.statLabel}>{balanceLabel}</span>
+      </div>
     </div>
   );
 }
@@ -217,7 +162,6 @@ export default function Dashboard({
             <button style={s.avatarBtn} onClick={onOpenProfile} aria-label="Profile">
               <Avatar member={currentMember} size={38} isActive />
             </button>
-            <MenuButton activeTab={activeTab} onTabChange={onTabChange} authUser={authUser} />
           </div>
           <h1 style={s.projectName}>{project?.name ?? '—'}</h1>
           <button style={s.codeBtn} onClick={copyCode} title="Copy project code">
@@ -232,7 +176,7 @@ export default function Dashboard({
           </button>
         </header>
 
-        <StatsRow transactions={transactions} members={members} />
+        <StatsRow transactions={transactions} members={members} memberId={memberId} />
 
         {categories.length > 2 && (
           <div className="hide-scrollbar" style={s.filterScroll}>
@@ -327,7 +271,7 @@ const s = {
     flex: 1,
     overflowY: 'auto',
     WebkitOverflowScrolling: 'touch',
-    paddingBottom: 'calc(120px + env(safe-area-inset-bottom))',
+    paddingBottom: 'calc(168px + env(safe-area-inset-bottom))',
   },
   header: {
     padding: '20px 20px 0',
@@ -392,12 +336,12 @@ const s = {
     overflow: 'hidden',
   },
   stat: {
+    flex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 3,
-    padding: '0 20px',
-    flexShrink: 0,
+    padding: '0 8px',
   },
   statVal: {
     fontSize: 18,
@@ -417,22 +361,6 @@ const s = {
     height: 36,
     background: colors.border,
     flexShrink: 0,
-  },
-  chartWrap: {
-    flex: 1,
-    alignSelf: 'stretch',
-    display: 'flex',
-    alignItems: 'center',
-    padding: '0 16px 0 12px',
-    minWidth: 0,
-  },
-  chartEmpty: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: 500,
-    lineHeight: 1.4,
-    margin: 0,
-    textAlign: 'center',
   },
   filterScroll: {
     display: 'flex',
@@ -540,9 +468,8 @@ const s = {
   },
   fab: {
     position: 'fixed',
-    bottom: 'calc(32px + env(safe-area-inset-bottom))',
-    left: '50%',
-    transform: 'translateX(-50%)',
+    bottom: 'calc(88px + env(safe-area-inset-bottom))',
+    right: 'max(20px, calc(50vw - 220px))',
     display: 'flex',
     alignItems: 'center',
     gap: 8,

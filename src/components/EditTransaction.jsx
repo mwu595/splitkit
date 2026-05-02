@@ -5,6 +5,19 @@ import { fmt } from '../lib/settlement.js';
 import { CATEGORIES, CAT_ICONS } from '../lib/categories.js';
 import { CURRENCIES, DEFAULT_CURRENCY, getCurrency } from '../lib/currencies.js';
 import { getExchangeRates, getExchangeRateData, convertToUsd, fmtUsdRate } from '../lib/exchangeRates.js';
+
+function fmtLocalAmount(amount, currency) {
+  try {
+    const decimals = new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.code })
+      .resolvedOptions().maximumFractionDigits;
+    return currency.symbol + new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(amount);
+  } catch {
+    return currency.symbol + amount.toFixed(2);
+  }
+}
 import BottomSheet from './ui/BottomSheet.jsx';
 
 function Chevron() {
@@ -28,7 +41,6 @@ export default function EditTransaction({ open, onClose, onDeleted, session, mem
   const [currencySearch,      setCurrencySearch]      = useState('');
   const [rateData,            setRateData]            = useState({ rates: {}, fetchedAt: null });
 
-  // Load rates when currency picker opens
   useEffect(() => {
     if (showCurrencyPicker) {
       getExchangeRateData().then(setRateData).catch(() => {});
@@ -50,6 +62,7 @@ export default function EditTransaction({ open, onClose, onDeleted, session, mem
       setConfirmDelete(false);
       setAmountFocused(false);
       setCurrencySearch('');
+      getExchangeRateData().then(setRateData).catch(() => {});
     }
   }, [open, transaction]);
 
@@ -119,9 +132,13 @@ export default function EditTransaction({ open, onClose, onDeleted, session, mem
     }
   }
 
-  const amt        = parseFloat(form.amount) || 0;
-  const splitCount = form.splitBetween.length;
-  const perPerson  = splitCount > 0 && amt > 0 ? amt / splitCount : 0;
+  const amt          = parseFloat(form.amount) || 0;
+  const splitCount   = form.splitBetween.length;
+  const perPerson    = splitCount > 0 && amt > 0 ? amt / splitCount : 0;
+  const isUsd        = form.currency.code === 'USD';
+  const perPersonUsd = !isUsd && perPerson > 0 && Object.keys(rateData.rates).length > 0
+    ? convertToUsd(perPerson, form.currency.code, rateData.rates)
+    : null;
 
   return (
     <>
@@ -265,7 +282,12 @@ export default function EditTransaction({ open, onClose, onDeleted, session, mem
                   <label style={s.label}>Split between</label>
                   {perPerson > 0 && (
                     <span style={{ fontSize: 12, color: colors.accent, fontWeight: 700 }}>
-                      {fmt(perPerson)} each
+                      {isUsd
+                        ? fmt(perPerson)
+                        : perPersonUsd !== null
+                          ? `${fmtLocalAmount(perPerson, form.currency)} (${fmt(perPersonUsd)})`
+                          : fmtLocalAmount(perPerson, form.currency)
+                      } each
                     </span>
                   )}
                 </div>

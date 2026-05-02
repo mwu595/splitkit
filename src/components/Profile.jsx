@@ -7,30 +7,7 @@ import {
 } from '../lib/db.js';
 import { getDeviceId } from '../lib/deviceId.js';
 import Avatar from './ui/Avatar.jsx';
-
-// ─── Image compression ────────────────────────────────────────────────────────
-
-function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    const SIZE   = 200;
-    const canvas = document.createElement('canvas');
-    canvas.width  = SIZE;
-    canvas.height = SIZE;
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const min = Math.min(img.width, img.height);
-      const sx  = (img.width  - min) / 2;
-      const sy  = (img.height - min) / 2;
-      ctx.drawImage(img, sx, sy, min, min, 0, 0, SIZE, SIZE);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('load failed')); };
-    img.src = url;
-  });
-}
+import AvatarCropper from './ui/AvatarCropper.jsx';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -46,6 +23,7 @@ export default function Profile({ session, members, currentMember, project, onLe
   // Avatar
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarError,     setAvatarError]     = useState('');
+  const [cropSrc,         setCropSrc]         = useState(null);
 
   // Project name (admin only)
   const [editingProject,     setEditingProject]     = useState(false);
@@ -61,6 +39,7 @@ export default function Profile({ session, members, currentMember, project, onLe
 
   // Remove / restore
   const [confirmRemoveId, setConfirmRemoveId] = useState(null);
+  const [editMemberId,    setEditMemberId]    = useState(null);
   const [removingId,      setRemovingId]      = useState(null);
   const [restoringId,     setRestoringId]     = useState(null);
 
@@ -102,22 +81,30 @@ export default function Profile({ session, members, currentMember, project, onLe
 
   // ── Avatar upload ──────────────────────────────────────────────────────────
 
-  async function handleAvatarChange(e) {
+  function handleAvatarChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setCropSrc(URL.createObjectURL(file));
+    e.target.value = '';
+  }
+
+  function handleCropConfirm(base64) {
+    URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
     setUploadingAvatar(true);
     setAvatarError('');
-    try {
-      const data = await compressImage(file);
-      await updateMemberAvatar(session.memberId, data);
-      refresh();
-    } catch (err) {
-      console.error('[splitkit] avatar upload failed:', err);
-      setAvatarError('Could not upload photo. Try again.');
-    } finally {
-      setUploadingAvatar(false);
-      e.target.value = '';
-    }
+    updateMemberAvatar(session.memberId, base64)
+      .then(() => refresh())
+      .catch((err) => {
+        console.error('[splitkit] avatar upload failed:', err);
+        setAvatarError('Could not upload photo. Try again.');
+      })
+      .finally(() => setUploadingAvatar(false));
+  }
+
+  function handleCropCancel() {
+    URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
   }
 
   // ── Project name ───────────────────────────────────────────────────────────
@@ -170,6 +157,7 @@ export default function Profile({ session, members, currentMember, project, onLe
     try {
       await removeMember(memberId);
       setConfirmRemoveId(null);
+      setEditMemberId(null);
       refresh();
     } catch {
       // silently ignore
@@ -426,7 +414,7 @@ export default function Profile({ session, members, currentMember, project, onLe
                         <span style={{ fontSize: 13, color: colors.textSecondary, flex: 1 }}>
                           Remove <strong style={{ color: colors.textPrimary }}>{m.name}</strong>?
                         </span>
-                        <button style={s.cancelSmallBtn} onClick={() => setConfirmRemoveId(null)}>
+                        <button style={s.cancelSmallBtn} onClick={() => { setConfirmRemoveId(null); setEditMemberId(null); }}>
                           Cancel
                         </button>
                         <button
@@ -456,11 +444,22 @@ export default function Profile({ session, members, currentMember, project, onLe
                           {(m.role === 'admin' || members[0]?.id === m.id) && <span style={s.adminBadgeSmall}>admin</span>}
                           {isSelf && <span style={s.youBadge}>you</span>}
                         </div>
-                        {showRemove && (
-                          <button style={s.removeBtn} onClick={() => setConfirmRemoveId(m.id)}>
-                            Remove
+                        {showRemove && editMemberId === m.id ? (
+                          <>
+                            <button style={s.removeBtn} onClick={() => setConfirmRemoveId(m.id)}>
+                              Remove
+                            </button>
+                            <button style={s.editCloseBtn} onClick={() => setEditMemberId(null)}>✕</button>
+                          </>
+                        ) : showRemove ? (
+                          <button style={s.editBtn} onClick={() => setEditMemberId(m.id)} aria-label="Edit member">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
                           </button>
-                        )}
+                        ) : null}
                         {showRestore && (
                           <button
                             style={{ ...s.restoreBtn, ...(restoringId === m.id ? { opacity: 0.5 } : {}) }}
@@ -536,6 +535,13 @@ export default function Profile({ session, members, currentMember, project, onLe
           </div>
         )}
       </section>
+
+      {/* ── Avatar crop sheet ────────────────────────────────────── */}
+      <AvatarCropper
+        imageSrc={cropSrc}
+        onConfirm={handleCropConfirm}
+        onCancel={handleCropCancel}
+      />
 
     </div>
   );
@@ -691,6 +697,8 @@ const s = {
     borderRadius: 4,
     padding: '2px 6px',
     flexShrink: 0,
+    letterSpacing: '0.3px',
+    textTransform: 'uppercase',
   },
 
   // ── Sections ───────────────────────────────────────────────────
@@ -855,16 +863,18 @@ const s = {
     flexShrink: 0,
   },
   removeBtn: {
-    padding: '5px 10px',
-    borderRadius: 7,
-    border: `1px solid ${colors.settlementBorder}`,
-    background: colors.settlementBg,
+    padding: '2px 6px',
+    borderRadius: 4,
+    border: 'none',
+    background: 'transparent',
     color: colors.accent,
-    fontSize: 11,
-    fontWeight: 600,
+    fontSize: 10,
+    fontWeight: 700,
     cursor: 'pointer',
     fontFamily: font.sans,
     flexShrink: 0,
+    letterSpacing: '0.3px',
+    textTransform: 'uppercase',
   },
   restoreBtn: {
     padding: '5px 10px',
@@ -905,6 +915,29 @@ const s = {
     color: '#fff',
     fontSize: 11,
     fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: font.sans,
+    flexShrink: 0,
+  },
+  editBtn: {
+    padding: '6px',
+    borderRadius: 7,
+    border: `1px solid ${colors.border}`,
+    background: 'transparent',
+    color: colors.textMuted,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  editCloseBtn: {
+    padding: '5px 8px',
+    borderRadius: 7,
+    border: `1px solid ${colors.border}`,
+    background: colors.cardSecondary,
+    color: colors.textMuted,
+    fontSize: 11,
     cursor: 'pointer',
     fontFamily: font.sans,
     flexShrink: 0,

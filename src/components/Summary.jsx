@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { colors, font, radius } from '../styles/tokens.js';
 import { computeBalances, minimizeTransactions, fmt } from '../lib/settlement.js';
 import { addSettlement } from '../lib/db.js';
+import { CURRENCIES, getCurrency } from '../lib/currencies.js';
+import { getExchangeRateData, convertToUsd, fmtUsdRate } from '../lib/exchangeRates.js';
 import BottomSheet from './ui/BottomSheet.jsx';
-import MenuButton from './ui/MenuButton.jsx';
 import Avatar from './ui/Avatar.jsx';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -99,12 +100,17 @@ function TransferCard({ transfer, isMine, onSettle, fromMember, toMember }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Summary({ session, members, transactions, activeTab, onTabChange, onOpenProfile, currentMember, authUser }) {
-  const [pickerOpen,    setPickerOpen]    = useState(false);
-  const [confirmOpen,   setConfirmOpen]   = useState(false);
-  const [selected,      setSelected]      = useState(null); // transfer object
-  const [settleAmount,  setSettleAmount]  = useState('');
-  const [settling,      setSettling]      = useState(false);
-  const [error,         setError]         = useState('');
+  const [pickerOpen,           setPickerOpen]           = useState(false);
+  const [confirmOpen,          setConfirmOpen]          = useState(false);
+  const [selected,             setSelected]             = useState(null);
+  const [settleAmount,         setSettleAmount]         = useState('');
+  const [settleCurrency,       setSettleCurrency]       = useState(() => getCurrency('USD'));
+  const [settling,             setSettling]             = useState(false);
+  const [error,                setError]                = useState('');
+  const [memberPickerFor,      setMemberPickerFor]      = useState(null);
+  const [showCurrencyPicker,   setShowCurrencyPicker]   = useState(false);
+  const [currencySearch,       setCurrencySearch]       = useState('');
+  const [rateData,             setRateData]             = useState({ rates: {}, fetchedAt: null });
 
   const memberId  = session?.memberId;
   const memberMap = Object.fromEntries(members.map(m => [m.id, m.name]));
@@ -117,9 +123,16 @@ export default function Summary({ session, members, transactions, activeTab, onT
   // Transfers where the current user is the debtor
   const myDebts = transfers.filter(t => t.from === memberId);
 
+  useEffect(() => {
+    if (showCurrencyPicker) {
+      getExchangeRateData().then(setRateData).catch(() => {});
+    }
+  }, [showCurrencyPicker]);
+
   function openConfirm(transfer) {
     setSelected(transfer);
     setSettleAmount(String(transfer.amount));
+    setSettleCurrency(getCurrency('USD'));
     setError('');
     setConfirmOpen(true);
   }
@@ -129,11 +142,20 @@ export default function Summary({ session, members, transactions, activeTab, onT
   }
 
   function handleSettleUpFab() {
-    if (myDebts.length === 0) return;
     if (myDebts.length === 1) {
       openConfirm(myDebts[0]);
-    } else {
+    } else if (myDebts.length > 1) {
       setPickerOpen(true);
+    } else {
+      const others = members.filter(m => !m.removedAt && m.id !== memberId);
+      const defaultTo = others[0];
+      if (!defaultTo) return;
+      const currentMemberObj = members.find(m => m.id === memberId);
+      setSelected({ from: memberId, fromName: currentMemberObj?.name ?? '', to: defaultTo.id, toName: defaultTo.name, amount: 0 });
+      setSettleAmount('');
+      setSettleCurrency(getCurrency('USD'));
+      setError('');
+      setConfirmOpen(true);
     }
   }
 
@@ -144,13 +166,21 @@ export default function Summary({ session, members, transactions, activeTab, onT
     setSettling(true);
     setError('');
     try {
+      const rounded = Math.round(amt * 100) / 100;
+      let amountUsd = rounded;
+      if (settleCurrency.code !== 'USD') {
+        const { rates } = await getExchangeRateData();
+        amountUsd = Math.round(convertToUsd(rounded, settleCurrency.code, rates) * 100) / 100;
+      }
       await addSettlement(
         session.code,
         selected.from,
         selected.to,
-        Math.round(amt * 100) / 100,
+        rounded,
         selected.fromName,
         selected.toName,
+        settleCurrency.code,
+        amountUsd,
       );
       setConfirmOpen(false);
       setPickerOpen(false);
@@ -172,7 +202,6 @@ export default function Summary({ session, members, transactions, activeTab, onT
             <button style={s.avatarBtn} onClick={onOpenProfile} aria-label="Profile">
               <Avatar member={currentMember} size={38} isActive />
             </button>
-            <MenuButton activeTab={activeTab} onTabChange={onTabChange} authUser={authUser} />
           </div>
           <h1 style={s.title}>Summary</h1>
         </header>
@@ -199,7 +228,11 @@ export default function Summary({ session, members, transactions, activeTab, onT
           <section style={s.section}>
             <p style={s.sectionLabel}>Pay-back plan</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {transfers.map((t, i) => (
+              {[...transfers].sort((a, b) => {
+                const aRelevant = a.from === memberId || a.to === memberId;
+                const bRelevant = b.from === memberId || b.to === memberId;
+                return (bRelevant ? 1 : 0) - (aRelevant ? 1 : 0);
+              }).map((t, i) => (
                 <TransferCard
                   key={i}
                   transfer={t}
@@ -223,12 +256,10 @@ export default function Summary({ session, members, transactions, activeTab, onT
         )}
       </div>
 
-      {/* ── Settle Up FAB ───────────────────────────────────────── */}
-      {myDebts.length > 0 && (
-        <button style={s.fab} onClick={handleSettleUpFab}>
-          Settle Up
-        </button>
-      )}
+      {/* ── Settle FAB ──────────────────────────────────────────── */}
+      <button style={s.fab} onClick={handleSettleUpFab}>
+        Settle
+      </button>
 
       {/* ── Debt picker sheet (multiple debts) ───────────────────── */}
       <BottomSheet
@@ -268,38 +299,47 @@ export default function Summary({ session, members, transactions, activeTab, onT
           {selected && (
             <div style={s.confirmCard}>
               <div style={s.confirmAvatarRow}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <Avatar member={memberById[selected.from]} size={52} isActive />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                  <div style={s.avatarRing} onClick={() => setMemberPickerFor('from')}>
+                    <Avatar member={memberById[selected.from]} size={52} isActive />
+                  </div>
                   <span style={{ fontSize: 12, color: colors.textSecondary }}>{selected.fromName}</span>
                 </div>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                  stroke={colors.textMuted} strokeWidth="2" strokeLinecap="round">
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <polyline points="12 5 19 12 12 19" />
-                </svg>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <Avatar member={memberById[selected.to]} size={52} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: colors.textMuted, flexShrink: 0 }}>pays</span>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                  <div style={s.avatarRing} onClick={() => setMemberPickerFor('to')}>
+                    <Avatar member={memberById[selected.to]} size={52} />
+                  </div>
                   <span style={{ fontSize: 12, color: colors.textSecondary }}>{selected.toName}</span>
                 </div>
               </div>
 
               {/* Editable amount */}
-              <div style={s.amountBlock}>
-                <span style={s.amountCurrency}>$</span>
+              <div style={s.inputRow}>
+                <button
+                  type="button"
+                  style={s.selectorBtn}
+                  onClick={() => setShowCurrencyPicker(true)}
+                >
+                  <div style={s.currencyBox}>
+                    <span style={s.currencySymbol}>{settleCurrency.symbol}</span>
+                  </div>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
                 <input
-                  style={s.amountInput}
+                  style={{ ...s.rowInput, ...s.amountInput }}
                   type="number"
                   inputMode="decimal"
                   min="0.01"
                   step="0.01"
+                  placeholder="0.00"
                   value={settleAmount}
                   onChange={e => { setSettleAmount(e.target.value); setError(''); }}
                 />
               </div>
-
-              <p style={{ fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 1.5 }}>
-                Mark this as paid outside the app — cash, bank transfer, etc.
-              </p>
             </div>
           )}
           {error && (
@@ -320,6 +360,117 @@ export default function Summary({ session, members, transactions, activeTab, onT
             >
               {settling ? 'Recording…' : 'Mark as Paid'}
             </button>
+          </div>
+        </div>
+      </BottomSheet>
+
+      {/* ── Member picker (payer / payee swap) ───────────────────── */}
+      <BottomSheet
+        open={memberPickerFor !== null}
+        onClose={() => setMemberPickerFor(null)}
+        title={memberPickerFor === 'from' ? "Who's paying?" : "Who are they paying?"}
+      >
+        <div style={{ padding: '0 20px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {members.filter(m => !m.removedAt && m.id !== (memberPickerFor === 'from' ? selected?.to : selected?.from)).map(m => (
+            <button
+              key={m.id}
+              style={s.pickerRow}
+              onClick={() => {
+                setSelected(prev => memberPickerFor === 'from'
+                  ? { ...prev, from: m.id, fromName: m.name }
+                  : { ...prev, to: m.id, toName: m.name }
+                );
+                setMemberPickerFor(null);
+              }}
+            >
+              <div style={s.avatarRing}>
+                <Avatar member={m} size={36} />
+              </div>
+              <span style={{ flex: 1, textAlign: 'left', fontSize: 15, fontWeight: 600, color: colors.textPrimary }}>
+                {m.name}
+              </span>
+            </button>
+          ))}
+        </div>
+      </BottomSheet>
+
+      {/* ── Currency picker ──────────────────────────────────────── */}
+      <BottomSheet
+        open={showCurrencyPicker}
+        onClose={() => { setShowCurrencyPicker(false); setCurrencySearch(''); }}
+        title="Currency"
+        fixedHeight="80svh"
+      >
+        <div style={{ flexShrink: 0, padding: '0 20px 4px' }}>
+          <div style={s.searchWrap}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+              stroke={colors.textMuted} strokeWidth="2" strokeLinecap="round"
+              style={{ flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              style={s.searchInput}
+              placeholder="Search currencies…"
+              value={currencySearch}
+              onChange={e => setCurrencySearch(e.target.value)}
+              autoComplete="off"
+            />
+            {currencySearch.length > 0 && (
+              <button style={s.searchClear} onClick={() => setCurrencySearch('')}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            )}
+          </div>
+          {rateData.fetchedAt && (
+            <p style={s.rateDate}>
+              Rates as of {new Date(rateData.fetchedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            </p>
+          )}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          <div style={s.cpList}>
+            {CURRENCIES
+              .filter(c => {
+                const q = currencySearch.trim().toLowerCase();
+                if (!q) return true;
+                return c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q);
+              })
+              .map(c => {
+                const active  = settleCurrency.code === c.code;
+                const rateStr = fmtUsdRate(c.code, rateData.rates);
+                return (
+                  <button
+                    key={c.code}
+                    style={{ ...s.cpRow, ...(active ? s.cpRowActive : {}) }}
+                    onClick={() => { setSettleCurrency(c); setShowCurrencyPicker(false); setCurrencySearch(''); }}
+                  >
+                    <div style={s.cpSymbolBox}>
+                      <span style={{ ...s.cpSymbolText, color: active ? colors.accent : colors.textPrimary }}>
+                        {c.symbol}
+                      </span>
+                    </div>
+                    <div style={s.cpRowInfo}>
+                      <span style={{ fontSize: 15, fontWeight: 600, color: colors.textPrimary }}>{c.name}</span>
+                      <span style={{ fontSize: 12, color: colors.textMuted }}>{c.code}</span>
+                      {rateStr && (
+                        <span style={{ fontSize: 11, color: active ? colors.accent : colors.textMuted, fontWeight: 500 }}>
+                          {rateStr}
+                        </span>
+                      )}
+                    </div>
+                    {active && (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke={colors.accent} strokeWidth="2.5" strokeLinecap="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                  </button>
+                );
+              })
+            }
           </div>
         </div>
       </BottomSheet>
@@ -347,7 +498,7 @@ const s = {
     flex: 1,
     overflowY: 'auto',
     WebkitOverflowScrolling: 'touch',
-    paddingBottom: 'calc(140px + env(safe-area-inset-bottom))',
+    paddingBottom: 'calc(168px + env(safe-area-inset-bottom))',
   },
   header: {
     padding: '20px 20px 0',
@@ -488,23 +639,21 @@ const s = {
     minWidth: 0,
   },
   settleBtn: {
-    padding: '8px 14px',
-    borderRadius: radius.pill,
-    background: colors.accent,
+    background: 'none',
     border: 'none',
-    color: '#fff',
+    color: colors.accent,
     fontSize: 13,
     fontWeight: 700,
     cursor: 'pointer',
     fontFamily: font.sans,
     flexShrink: 0,
     whiteSpace: 'nowrap',
+    padding: 0,
   },
   fab: {
     position: 'fixed',
-    bottom: 'calc(32px + env(safe-area-inset-bottom))',
-    left: '50%',
-    transform: 'translateX(-50%)',
+    bottom: 'calc(88px + env(safe-area-inset-bottom))',
+    right: 'max(20px, calc(50vw - 220px))',
     padding: '14px 32px',
     borderRadius: radius.pill,
     background: colors.accent,
@@ -542,38 +691,154 @@ const s = {
   confirmAvatarRow: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     gap: 12,
   },
-  amountBlock: {
+  avatarRing: {
+    borderRadius: '50%',
+    border: `2px solid ${colors.border}`,
+    padding: 2,
+    cursor: 'pointer',
+    display: 'inline-flex',
+    transition: 'border-color 0.15s',
+  },
+  inputRow: {
+    display: 'flex',
+    alignItems: 'stretch',
+    borderRadius: 14,
+    border: `1.5px solid ${colors.border}`,
+    overflow: 'hidden',
+  },
+  selectorBtn: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    padding: '12px 20px',
-    background: colors.settlementBg,
-    borderRadius: radius.input,
-    border: `1px solid ${colors.settlementBorder}`,
+    gap: 5,
+    padding: '12px 14px',
+    minWidth: 72,
+    background: colors.cardSecondary,
+    border: 'none',
+    borderRight: `1.5px solid ${colors.border}`,
+    cursor: 'pointer',
+    color: colors.textSecondary,
+    fontFamily: font.sans,
+    flexShrink: 0,
   },
-  amountCurrency: {
-    fontSize: 24,
-    fontWeight: 300,
-    color: colors.accent,
-    lineHeight: 1,
-    alignSelf: 'flex-start',
-    marginTop: 4,
+  currencyBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    background: `${colors.accent}20`,
+    border: `1.5px solid ${colors.accent}60`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  amountInput: {
-    fontSize: 38,
+  currencySymbol: {
+    fontSize: 15,
     fontWeight: 700,
     color: colors.accent,
+    lineHeight: 1,
+  },
+  rowInput: {
+    flex: 1,
+    padding: '16px 14px',
+    border: 'none',
+    background: colors.cardSecondary,
+    fontSize: 15,
+    color: colors.textPrimary,
+    outline: 'none',
+    fontFamily: font.sans,
+  },
+  amountInput: {
+    fontSize: 36,
+    fontWeight: 700,
+    color: colors.accent,
+    caretColor: colors.accent,
+  },
+  searchWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+    padding: '10px 14px',
+    borderRadius: radius.input,
+    border: `1.5px solid ${colors.border}`,
+    background: colors.cardSecondary,
+  },
+  searchInput: {
+    flex: 1,
     border: 'none',
     background: 'transparent',
+    fontSize: 14,
+    color: colors.textPrimary,
     outline: 'none',
-    width: 150,
-    textAlign: 'center',
     fontFamily: font.sans,
-    caretColor: colors.accent,
+  },
+  searchClear: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: colors.textMuted,
+    background: 'none',
+    border: 'none',
+    padding: 2,
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  rateDate: {
+    fontSize: 11,
+    fontWeight: 500,
+    color: colors.textMuted,
+    textAlign: 'center',
+    padding: '4px 0 8px',
+    margin: 0,
+  },
+  cpList: {
+    padding: '0 20px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  cpRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    padding: '13px 14px',
+    borderRadius: 12,
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    fontFamily: font.sans,
+    width: '100%',
+    transition: 'background 0.1s',
+  },
+  cpRowActive: {
+    background: colors.settlementBg,
+  },
+  cpRowInfo: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    textAlign: 'left',
+  },
+  cpSymbolBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 11,
+    background: colors.cardSecondary,
+    border: `1px solid ${colors.border}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  cpSymbolText: {
+    fontSize: 18,
+    fontWeight: 700,
+    lineHeight: 1,
   },
   error: {
     fontSize: 13,

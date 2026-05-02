@@ -249,7 +249,7 @@ export async function deleteTransaction(txId) {
   if (error) throw error;
 }
 
-export async function addSettlement(code, from, to, amount, fromName, toName) {
+export async function addSettlement(code, from, to, amount, fromName, toName, currencyCode, amountUsd) {
   return addTransaction(code, {
     description:  `${fromName} paid ${toName}`,
     amount,
@@ -258,6 +258,8 @@ export async function addSettlement(code, from, to, amount, fromName, toName) {
     paidBy:       from,
     splitBetween: [to],
     isSettlement: true,
+    currencyCode: currencyCode ?? 'USD',
+    amountUsd:    amountUsd ?? amount,
   });
 }
 

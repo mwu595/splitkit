@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { colors, font, radius } from '../styles/tokens.js';
 import { fmt } from '../lib/settlement.js';
 import { CAT_ICONS } from '../lib/categories.js';
-import MenuButton from './ui/MenuButton.jsx';
 import Avatar from './ui/Avatar.jsx';
 
 const CAT_COLORS = {
@@ -70,7 +69,6 @@ export default function Analytics({ session, members, transactions, activeTab, o
             <button style={s.avatarBtn} onClick={onOpenProfile} aria-label="Profile">
               <Avatar member={currentMember} size={38} isActive />
             </button>
-            <MenuButton activeTab={activeTab} onTabChange={onTabChange} authUser={authUser} />
           </div>
           <h1 style={s.pageTitle}>Analytics</h1>
         </header>
@@ -203,7 +201,7 @@ const s = {
     flex: 1,
     overflowY: 'auto',
     WebkitOverflowScrolling: 'touch',
-    paddingBottom: 'calc(40px + env(safe-area-inset-bottom))',
+    paddingBottom: 'calc(96px + env(safe-area-inset-bottom))',
   },
   header: {
     padding: '20px 20px 0',
