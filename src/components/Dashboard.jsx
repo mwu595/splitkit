@@ -274,7 +274,7 @@ const s = {
     paddingBottom: 'calc(168px + env(safe-area-inset-bottom))',
   },
   header: {
-    padding: '20px 20px 0',
+    padding: '20px 16px 0',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
@@ -366,7 +366,7 @@ const s = {
     display: 'flex',
     gap: 8,
     overflowX: 'auto',
-    padding: '0 20px 14px',
+    padding: '0 16px 14px',
   },
   filterPill: {
     padding: '6px 14px',
@@ -390,7 +390,7 @@ const s = {
     color: '#fff',
   },
   list: {
-    padding: '0 20px',
+    padding: '0 16px',
   },
   dateHeader: {
     fontSize: 11,
@@ -464,7 +464,7 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '60px 20px',
+    padding: '60px 16px',
   },
   fab: {
     position: 'fixed',

@@ -140,7 +140,7 @@ const s = {
     paddingTop: 'env(safe-area-inset-top)',
   },
   header: {
-    padding: '20px 20px 16px',
+    padding: '20px 16px 16px',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
@@ -175,7 +175,7 @@ const s = {
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
-    padding: '40px 20px',
+    padding: '40px 16px',
   },
   empty: {
     display: 'flex',
@@ -199,7 +199,7 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
-    padding: '8px 20px',
+    padding: '8px 16px',
   },
   card: {
     display: 'flex',

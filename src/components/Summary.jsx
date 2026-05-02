@@ -267,7 +267,7 @@ export default function Summary({ session, members, transactions, activeTab, onT
         onClose={() => setPickerOpen(false)}
         title="Who are you paying?"
       >
-        <div style={{ padding: '0 20px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ padding: '0 16px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {myDebts.map((t, i) => (
             <button
               key={i}
@@ -295,7 +295,7 @@ export default function Summary({ session, members, transactions, activeTab, onT
         onClose={() => { if (!settling) { setConfirmOpen(false); setError(''); } }}
         title="Confirm Settlement"
       >
-        <div style={{ padding: '0 20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ padding: '0 16px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
           {selected && (
             <div style={s.confirmCard}>
               <div style={s.confirmAvatarRow}>
@@ -370,7 +370,7 @@ export default function Summary({ session, members, transactions, activeTab, onT
         onClose={() => setMemberPickerFor(null)}
         title={memberPickerFor === 'from' ? "Who's paying?" : "Who are they paying?"}
       >
-        <div style={{ padding: '0 20px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ padding: '0 16px 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {members.filter(m => !m.removedAt && m.id !== (memberPickerFor === 'from' ? selected?.to : selected?.from)).map(m => (
             <button
               key={m.id}
@@ -401,7 +401,7 @@ export default function Summary({ session, members, transactions, activeTab, onT
         title="Currency"
         fixedHeight="80svh"
       >
-        <div style={{ flexShrink: 0, padding: '0 20px 4px' }}>
+        <div style={{ flexShrink: 0, padding: '0 16px 4px' }}>
           <div style={s.searchWrap}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
               stroke={colors.textMuted} strokeWidth="2" strokeLinecap="round"
@@ -501,7 +501,7 @@ const s = {
     paddingBottom: 'calc(168px + env(safe-area-inset-bottom))',
   },
   header: {
-    padding: '20px 20px 0',
+    padding: '20px 16px 0',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
@@ -529,13 +529,13 @@ const s = {
   banner: {
     margin: '16px 20px',
     borderRadius: radius.card,
-    padding: '18px 20px',
+    padding: '18px 16px',
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
   },
   section: {
-    padding: '0 20px',
+    padding: '0 16px',
     marginBottom: 20,
   },
   sectionLabel: {
@@ -796,7 +796,7 @@ const s = {
     margin: 0,
   },
   cpList: {
-    padding: '0 20px 16px',
+    padding: '0 16px 16px',
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
@@ -878,6 +878,6 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '32px 20px',
+    padding: '32px 16px',
   },
 };

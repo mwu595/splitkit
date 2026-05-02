@@ -40,8 +40,9 @@ export default function Analytics({ session, members, transactions, activeTab, o
     : expenses.filter(t => t.splitBetween.includes(filterMember));
 
   function relevantAmount(tx) {
-    if (filterMember === 'all') return tx.amount;
-    return tx.amount / tx.splitBetween.length;
+    const usd = tx.amountUsd ?? tx.amount;
+    if (filterMember === 'all') return usd;
+    return usd / tx.splitBetween.length;
   }
 
   const catTotals = {};
@@ -204,7 +205,7 @@ const s = {
     paddingBottom: 'calc(96px + env(safe-area-inset-bottom))',
   },
   header: {
-    padding: '20px 20px 0',
+    padding: '20px 16px 0',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
@@ -233,7 +234,7 @@ const s = {
     display: 'flex',
     gap: 8,
     overflowX: 'auto',
-    padding: '16px 20px',
+    padding: '16px 16px',
   },
   filterPill: {
     display: 'flex',
@@ -280,7 +281,7 @@ const s = {
     display: 'flex',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    padding: '0 20px 16px',
+    padding: '0 16px 16px',
   },
   totalLabel: {
     fontSize: 12,
@@ -299,7 +300,7 @@ const s = {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     gap: 10,
-    padding: '0 20px',
+    padding: '0 16px',
   },
   card: {
     borderRadius: 18,
@@ -355,6 +356,6 @@ const s = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '60px 20px',
+    padding: '60px 16px',
   },
 };
